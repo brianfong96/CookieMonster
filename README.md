@@ -51,8 +51,12 @@ python3 -m pip install cookie-monster-cli
 - `cookie_monster/capture.py`: network event capture pipeline
 - `cookie_monster/replay.py`: replay engine using captured headers
 - `cookie_monster/storage.py`: JSONL persistence/load
+- `cookie_monster/plugins/`: adapter scaffold + built-in adapters (`supabase`, `github`, `gmail`)
 - `cookie_monster/models.py`, `cookie_monster/config.py`: shared data contracts
-- `cookie_monster/cli.py`: `capture` and `replay` commands
+- `cookie_monster/cli.py`: command entrypoint (`capture`, `replay`, `profile-list`, `list-targets`, `doctor`, `serve`)
+- `cookie_monster/api_server.py`: local HTTP API mode
+- `cookie_monster/browser_profiles.py`: profile discovery from browser Local State
+- `cookie_monster/security_utils.py`: redaction + replay guardrails
 
 ## Usage
 
@@ -98,6 +102,7 @@ cookie-monster capture \
   --profile-directory Default \
   --open-url "https://supabase.com/dashboard/project/udnotkgtmnyxagnsmjxv" \
   --target-hint supabase.com \
+  --adapter supabase \
   --include-all-headers \
   --duration 30 \
   --output data/supabase-captures.jsonl
@@ -123,7 +128,65 @@ cookie-monster replay \
   --method GET \
   --url-contains github.com \
   --request-url https://github.com/settings/profile \
+  --allowed-domain github.com \
+  --retry-attempts 3 \
+  --retry-backoff 1.0 \
   --output data/response.json
+```
+
+Encrypted capture file (key can come from env):
+
+```bash
+export COOKIE_MONSTER_ENCRYPTION_KEY='YOUR_FERNET_KEY'
+cookie-monster capture --target-hint github.com --encryption-key-env COOKIE_MONSTER_ENCRYPTION_KEY
+cookie-monster replay --capture-file captures.jsonl --request-url https://github.com --encryption-key-env COOKIE_MONSTER_ENCRYPTION_KEY
+```
+
+JSON body replay (for POST APIs):
+
+```bash
+cookie-monster replay \
+  --capture-file data/captures.jsonl \
+  --method POST \
+  --url-contains api.example.com \
+  --request-url https://api.example.com/v1/items \
+  --json-body-file payload.json \
+  --allowed-domain api.example.com
+```
+
+### 4. Additional commands
+
+List debuggable tabs:
+
+```bash
+cookie-monster list-targets --chrome-host 127.0.0.1 --chrome-port 9222
+```
+
+List local browser profiles:
+
+```bash
+cookie-monster profile-list --browser chrome
+cookie-monster profile-list --browser edge
+```
+
+Run diagnostics:
+
+```bash
+cookie-monster doctor --browser chrome --chrome-host 127.0.0.1 --chrome-port 9222
+cookie-monster adapter-list --verbose
+```
+
+Run local API mode:
+
+```bash
+cookie-monster serve --host 127.0.0.1 --port 8787
+```
+
+Example API call:
+
+```bash
+curl -sS http://127.0.0.1:8787/health
+curl -sS -X POST http://127.0.0.1:8787/capture -H 'content-type: application/json' -d '{\"duration_seconds\":10,\"target_hint\":\"supabase.com\"}'
 ```
 
 ## TDD and Tests
@@ -138,7 +201,7 @@ pytest
 
 Current local result:
 
-- `16 passed`
+- `20 passed`
 
 ## Man Page
 

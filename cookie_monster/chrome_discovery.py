@@ -31,8 +31,12 @@ def list_targets(host: str, port: int, retries: int = 1, retry_delay_seconds: fl
     ) from last_error
 
 
+def list_page_targets(host: str, port: int) -> list[dict]:
+    return [t for t in list_targets(host, port, retries=8, retry_delay_seconds=0.5) if t.get("type") == "page"]
+
+
 def pick_target(host: str, port: int, hint: str | None = None) -> dict:
-    targets = [t for t in list_targets(host, port, retries=8, retry_delay_seconds=0.5) if t.get("type") == "page"]
+    targets = list_page_targets(host, port)
     if not targets:
         raise RuntimeError(
             "No page targets found. Open a tab in the Chrome instance started with --remote-debugging-port."

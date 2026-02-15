@@ -1,6 +1,7 @@
 import json
 
 from cookie_monster import cli
+from cookie_monster.models import CapturedRequest
 
 
 class DummyResponse:
@@ -12,7 +13,13 @@ class DummyResponse:
 
 def test_main_capture_command_prints_summary(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["cookie-monster", "capture", "--duration", "1"])
-    monkeypatch.setattr("cookie_monster.cli.capture_requests", lambda config: [object(), object()])
+    monkeypatch.setattr(
+        "cookie_monster.cli.capture_requests",
+        lambda config: [
+            CapturedRequest("1", "GET", "https://example.com", {"Cookie": "x=1"}),
+            CapturedRequest("2", "GET", "https://example.com", {"Cookie": "x=2"}),
+        ],
+    )
 
     cli.main()
     out = capsys.readouterr().out
@@ -49,7 +56,10 @@ def test_main_capture_launches_chrome_with_profile(monkeypatch, capsys):
 
     monkeypatch.setattr("cookie_monster.cli.launch_browser", fake_launch)
     monkeypatch.setattr("cookie_monster.cli.wait_for_debug_endpoint", lambda host, port: None)
-    monkeypatch.setattr("cookie_monster.cli.capture_requests", lambda config: [object()])
+    monkeypatch.setattr(
+        "cookie_monster.cli.capture_requests",
+        lambda config: [CapturedRequest("1", "GET", "https://example.com", {"Cookie": "x=1"})],
+    )
 
     cli.main()
     out = capsys.readouterr().out
@@ -109,7 +119,10 @@ def test_main_capture_edge_uses_browser_path(monkeypatch, capsys):
 
     monkeypatch.setattr("cookie_monster.cli.launch_browser", fake_launch)
     monkeypatch.setattr("cookie_monster.cli.wait_for_debug_endpoint", lambda host, port: None)
-    monkeypatch.setattr("cookie_monster.cli.capture_requests", lambda config: [object()])
+    monkeypatch.setattr(
+        "cookie_monster.cli.capture_requests",
+        lambda config: [CapturedRequest("1", "GET", "https://example.com", {"Cookie": "x=1"})],
+    )
 
     cli.main()
     _ = capsys.readouterr().out

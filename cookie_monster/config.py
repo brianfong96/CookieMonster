@@ -20,6 +20,11 @@ class CaptureConfig:
     output_file: str = "captures.jsonl"
     header_allowlist: list[str] = field(default_factory=lambda: list(DEFAULT_HEADER_ALLOWLIST))
     include_all_headers: bool = False
+    filter_host_contains: str | None = None
+    filter_path_contains: str | None = None
+    filter_method: str | None = None
+    filter_resource_type: str | None = None
+    encryption_key: str | None = None
 
 
 @dataclass
@@ -30,3 +35,11 @@ class ReplayConfig:
     url_contains: str | None = None
     timeout_seconds: int = 20
     output_file: str | None = None
+    body: str | None = None
+    json_body_file: str | None = None
+    retry_attempts: int = 1
+    retry_backoff_seconds: float = 0.5
+    allowed_domains: list[str] = field(default_factory=list)
+    redact_output: bool = False
+    enforce_capture_host: bool = True
+    encryption_key: str | None = None

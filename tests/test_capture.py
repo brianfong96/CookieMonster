@@ -50,7 +50,7 @@ class FakeCDPClient:
 def test_capture_filters_to_auth_headers_and_persists(monkeypatch):
     saved = {}
 
-    def fake_append(path, captures):
+    def fake_append(path, captures, encryption_key=None):
         saved["path"] = path
         saved["captures"] = captures
 
@@ -78,7 +78,7 @@ def test_capture_filters_to_auth_headers_and_persists(monkeypatch):
 def test_capture_all_headers_mode_keeps_non_auth_headers(monkeypatch):
     monkeypatch.setattr("cookie_monster.capture.get_websocket_debug_url", lambda *args, **kwargs: "ws://fake")
     monkeypatch.setattr("cookie_monster.capture.CDPClient", FakeCDPClient)
-    monkeypatch.setattr("cookie_monster.capture.append_captures", lambda path, captures: None)
+    monkeypatch.setattr("cookie_monster.capture.append_captures", lambda path, captures, encryption_key=None: None)
 
     cfg = CaptureConfig(
         duration_seconds=1,

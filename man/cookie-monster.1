@@ -1,106 +1,135 @@
 .TH COOKIE-MONSTER 1 "February 2026" "cookie-monster-cli 0.1.0" "User Commands"
 .SH NAME
-cookie-monster \- capture browser auth headers from Chrome DevTools and replay requests
+cookie-monster \- capture browser auth headers from DevTools and replay requests
 .SH SYNOPSIS
 .B cookie-monster
-[\-\-version]
+[\-\-version] [\-\-format {json|ndjson}]
 .I command
 .RI [ options ]
 .SH DESCRIPTION
 .B cookie-monster
-captures request headers from a Chrome DevTools network stream and can replay HTTP requests using captured auth/session headers.
+captures request headers from browser DevTools network traffic and replays HTTP requests for automation.
 .SH COMMANDS
 .TP
 .B capture
-Capture request headers from Chrome.
+Capture request headers.
 .TP
 .B replay
 Replay an HTTP request with captured headers.
+.TP
+.B profile-list
+List local browser profiles from Local State metadata.
+.TP
+.B list-targets
+List active debuggable page targets from DevTools.
+.TP
+.B doctor
+Run environment and connectivity checks.
+.TP
+.B serve
+Run local HTTP API mode.
+.TP
+.B adapter-list
+List built-in site adapters.
 .SH CAPTURE OPTIONS
 .TP
-.B \-\-chrome-host
-DevTools host (default: 127.0.0.1).
-.TP
-.B \-\-chrome-port
-DevTools port (default: 9222).
-.TP
 .B \-\-browser
-Browser to launch when using \fB\-\-launch-chrome\fR (\fBchrome\fR or \fBedge\fR).
-.TP
-.B \-\-duration
-Capture duration in seconds.
-.TP
-.B \-\-max-records
-Maximum number of captured requests.
-.TP
-.B \-\-target-hint
-Substring to match tab/request URLs.
-.TP
-.B \-\-output
-Capture output JSONL file.
-.TP
-.B \-\-header
-Repeatable header allowlist item.
-.TP
-.B \-\-include-all-headers
-Store all request headers.
+Browser to launch for capture (chrome|edge).
 .TP
 .B \-\-launch-browser
 Launch browser before capture.
 .TP
-.B \-\-launch-chrome
-Deprecated alias for \fB\-\-launch-browser\fR.
-.TP
-.B \-\-browser-path
-Path to browser executable.
-.TP
-.B \-\-chrome-path
-Deprecated alias for \fB\-\-browser-path\fR.
-.TP
 .B \-\-user-data-dir
-Chrome user data dir root.
+Browser user data dir root.
 .TP
 .B \-\-profile-directory
-Chrome profile folder (for example: Default, Profile 1).
+Profile folder name (Default, Profile 1, ...).
 .TP
-.B \-\-open-url
-URL to open when launching Chrome.
+.B \-\-target-hint
+Substring to match target URLs.
 .TP
-.B \-\-headless
-Run launched Chrome in headless mode.
+.B \-\-include-all-headers
+Store all headers (otherwise allowlist only).
 .TP
-.B \-\-keep-open
-Do not terminate launched Chrome after capture.
+.B \-\-filter-host
+Only keep requests where hostname contains value.
+.TP
+.B \-\-filter-path
+Only keep requests where path contains value.
+.TP
+.B \-\-filter-method
+Only keep requests with matching method.
+.TP
+.B \-\-filter-resource-type
+Only keep requests with matching DevTools resource type.
+.TP
+.B \-\-redact-output
+Mask sensitive header values in CLI output.
+.TP
+.B \-\-adapter
+Apply built-in adapter defaults (supabase|github|gmail).
+.TP
+.B \-\-auto-adapter
+Auto-detect adapter from URL/hint text.
+.TP
+.B \-\-encryption-key
+Fernet key for encrypted capture storage.
+.TP
+.B \-\-encryption-key-env
+Environment variable to read Fernet key from.
 .SH REPLAY OPTIONS
+.TP
+.B \-\-request-url
+Target replay URL.
 .TP
 .B \-\-capture-file
 Capture JSONL input file.
 .TP
-.B \-\-request-url
-Target URL to request.
-.TP
 .B \-\-method
 HTTP method (default: GET).
 .TP
-.B \-\-url-contains
-Filter capture records by URL substring.
+.B \-\-data
+Raw request body string.
 .TP
-.B \-\-timeout
-Request timeout in seconds.
+.B \-\-json-body-file
+Path to JSON body file.
 .TP
-.B \-\-output
-Write response JSON to file.
+.B \-\-retry-attempts
+Retry attempts for network/server failures.
+.TP
+.B \-\-retry-backoff
+Backoff seconds between retries.
+.TP
+.B \-\-allowed-domain
+Repeatable host/domain allowlist for replay safety.
+.TP
+.B \-\-no-enforce-capture-host
+Allow replay to different host than captured request.
+.TP
+.B \-\-encryption-key
+Fernet key for encrypted capture storage.
+.SH API MODE
+With
+.B serve
+endpoints are available:
+.TP
+.B GET /health
+Health check.
+.TP
+.B GET /targets
+List current page targets.
+.TP
+.B POST /capture
+Trigger capture (JSON body maps to CaptureConfig).
+.TP
+.B POST /replay
+Trigger replay (JSON body maps to ReplayConfig).
 .SH EXAMPLES
 .nf
-cookie-monster capture --launch-chrome \\
-  --user-data-dir "/Users/me/Library/Application Support/Google/Chrome" \\
-  --profile-directory Default \\
-  --open-url "https://supabase.com/dashboard/project/<id>" \\
-  --target-hint supabase.com --duration 30 --include-all-headers
-
-cookie-monster replay --capture-file captures.jsonl \\
-  --method GET --url-contains supabase.com \\
-  --request-url "https://supabase.com/dashboard/project/<id>"
+cookie-monster profile-list --browser chrome
+cookie-monster list-targets --chrome-host 127.0.0.1 --chrome-port 9222
+cookie-monster doctor --browser edge
+cookie-monster serve --host 127.0.0.1 --port 8787
 .fi
 .SH MANUAL VIEW
 Use:
@@ -108,5 +137,3 @@ Use:
 .B man ./man/cookie-monster.1
 .SH SECURITY
 Use only on accounts/systems you are authorized to access.
-.SH SEE ALSO
-Project documentation in README.md.

@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from cookie_monster.config import ReplayConfig
 from cookie_monster.models import CapturedRequest
@@ -60,11 +61,13 @@ def test_replay_uses_loaded_capture_and_writes_output(tmp_path, monkeypatch):
 
     called = {}
 
-    def fake_request(method, url, headers, timeout):
+    def fake_request(method, url, headers, timeout, data=None, json=None):
         called["method"] = method
         called["url"] = url
         called["headers"] = headers
         called["timeout"] = timeout
+        called["data"] = data
+        called["json"] = json
         return DummyResponse(status_code=200, text='{"ok":true}')
 
     monkeypatch.setattr("cookie_monster.replay.requests.request", fake_request)
@@ -86,3 +89,29 @@ def test_replay_uses_loaded_capture_and_writes_output(tmp_path, monkeypatch):
     assert "Host" not in called["headers"]
     assert called["headers"]["Cookie"] == "x=1"
     assert output_file.exists()
+
+
+def test_replay_enforces_allowed_domain(tmp_path):
+    capture_file = tmp_path / "caps.jsonl"
+    capture_file.write_text(
+        json.dumps(
+            {
+                "request_id": "10",
+                "method": "GET",
+                "url": "https://github.com/api",
+                "headers": {"Cookie": "x=1"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    cfg = ReplayConfig(
+        capture_file=str(capture_file),
+        request_url="https://example.com/api",
+        method="GET",
+        url_contains="github.com",
+        allowed_domains=["github.com"],
+        enforce_capture_host=False,
+    )
+    with pytest.raises(RuntimeError):
+        replay_with_capture(cfg)

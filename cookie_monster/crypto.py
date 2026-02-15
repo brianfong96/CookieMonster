@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -27,3 +28,13 @@ def decrypt_text(ciphertext: str, key: str) -> str:
         return Fernet(key.encode("utf-8")).decrypt(token.encode("utf-8")).decode("utf-8")
     except InvalidToken as exc:
         raise RuntimeError("Invalid encryption key for encrypted capture file") from exc
+
+
+def load_or_create_key(path: str) -> str:
+    key_path = Path(path)
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    if key_path.exists():
+        return key_path.read_text(encoding="utf-8").strip()
+    key = Fernet.generate_key().decode("utf-8")
+    key_path.write_text(key, encoding="utf-8")
+    return key

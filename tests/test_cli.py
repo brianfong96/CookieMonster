@@ -128,3 +128,13 @@ def test_main_capture_edge_uses_browser_path(monkeypatch, capsys):
     _ = capsys.readouterr().out
     assert called["launch"]["browser"] == "edge"
     assert called["launch"]["browser_path"].endswith("Microsoft Edge")
+
+
+def test_ui_command_starts_server_without_open(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["cookie-monster", "ui", "--no-open", "--host", "127.0.0.1", "--port", "9999"])
+    called = {}
+    monkeypatch.setattr("cookie_monster.cli.serve_api", lambda host, port: called.update({"host": host, "port": port}))
+    monkeypatch.setattr("cookie_monster.cli.webbrowser.open", lambda *_: (_ for _ in ()).throw(AssertionError("should not open")))
+    cli.main()
+    assert called["host"] == "127.0.0.1"
+    assert called["port"] == 9999

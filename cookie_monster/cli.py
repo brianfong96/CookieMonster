@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import webbrowser
 from importlib.metadata import PackageNotFoundError, version
 from subprocess import Popen
 
@@ -123,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="Run local HTTP API mode")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8787)
+
+    ui_parser = subparsers.add_parser("ui", help="Run local UI for encrypted auth cache checks")
+    ui_parser.add_argument("--host", default="127.0.0.1")
+    ui_parser.add_argument("--port", type=int, default=8787)
+    ui_parser.add_argument("--no-open", action="store_true")
 
     adapters_parser = subparsers.add_parser("adapter-list", help="List built-in site adapters")
     adapters_parser.add_argument("--verbose", action="store_true")
@@ -303,6 +309,12 @@ def main() -> None:
         return
 
     if args.command == "serve":
+        serve_api(args.host, args.port)
+        return
+
+    if args.command == "ui":
+        if not args.no_open:
+            webbrowser.open(f"http://{args.host}:{args.port}/ui")
         serve_api(args.host, args.port)
         return
 

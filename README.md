@@ -55,6 +55,7 @@ python3 -m pip install cookie-monster-cli
 - `cookie_monster/models.py`, `cookie_monster/config.py`: shared data contracts
 - `cookie_monster/cli.py`: command entrypoint (`capture`, `replay`, `profile-list`, `list-targets`, `doctor`, `serve`)
 - `cookie_monster/api_server.py`: local HTTP API mode
+- `cookie_monster/ui.py`: simple browser UI and CookieMonster logo
 - `cookie_monster/browser_profiles.py`: profile discovery from browser Local State
 - `cookie_monster/security_utils.py`: redaction + replay guardrails
 - `cookie_monster/client.py`: stable programmatic API (`CookieMonsterClient`)
@@ -191,6 +192,7 @@ Run local API mode:
 
 ```bash
 cookie-monster serve --host 127.0.0.1 --port 8787
+cookie-monster ui --host 127.0.0.1 --port 8787
 ```
 
 Example API call:
@@ -200,7 +202,28 @@ curl -sS http://127.0.0.1:8787/health
 curl -sS -X POST http://127.0.0.1:8787/capture -H 'content-type: application/json' -d '{\"duration_seconds\":10,\"target_hint\":\"supabase.com\"}'
 curl -sS -X POST http://127.0.0.1:8787/session-health -H 'content-type: application/json' -d '{\"capture_file\":\"data/captures.jsonl\"}'
 curl -sS -X POST http://127.0.0.1:8787/diff -H 'content-type: application/json' -d '{\"a\":\"data/captures-old.jsonl\",\"b\":\"data/captures-new.jsonl\"}'
+curl -sS -X POST http://127.0.0.1:8787/ui/check-auth -H 'content-type: application/json' -d '{\"url\":\"https://supabase.com/dashboard/project/udnotkgtmnyxagnsmjxv\"}'
 ```
+
+## Simple UI
+
+Launch:
+
+```bash
+cookie-monster ui
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8787/ui
+```
+
+UI features:
+- Enter URL and cache auth from your local profile into encrypted cache (`~/.cookie_monster/ui/captures.enc.jsonl`)
+- Check whether auth headers are cached for that URL
+- Inspect latest matching captures with redacted headers
+- CookieMonster branded logo header
 
 ## Library API (Programmatic Use)
 
@@ -250,7 +273,7 @@ pytest
 
 Current local result:
 
-- `33 passed`
+- `34 passed`
 
 ## Man Page
 

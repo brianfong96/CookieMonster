@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from cookie_monster.diffing import compare_capture_files
 from cookie_monster.models import CapturedRequest
@@ -16,7 +16,7 @@ def _jwt_with_exp(exp: int) -> str:
 
 
 def test_session_health_detects_bearer_and_cookie():
-    exp = int((datetime.now(UTC) + timedelta(minutes=10)).timestamp())
+    exp = int((datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp())
     token = _jwt_with_exp(exp)
     captures = [
         CapturedRequest("1", "GET", "https://x", {"Cookie": "a=b", "Authorization": f"Bearer {token}"})

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from .models import CapturedRequest
 from .results import SessionHealthResult
@@ -20,7 +20,7 @@ def _decode_jwt_exp(token: str) -> datetime | None:
         exp = obj.get("exp")
         if exp is None:
             return None
-        return datetime.fromtimestamp(int(exp), tz=UTC)
+        return datetime.fromtimestamp(int(exp), tz=timezone.utc)
     except Exception:  # noqa: BLE001
         return None
 
@@ -43,7 +43,7 @@ def analyze_session_health(captures: list[CapturedRequest]) -> SessionHealthResu
         exp = _decode_jwt_exp(bearer_tokens[-1])
         if exp is not None:
             jwt_expires_at = exp.isoformat()
-            jwt_expired = exp <= datetime.now(UTC)
+            jwt_expired = exp <= datetime.now(timezone.utc)
 
     return SessionHealthResult(
         has_cookie=has_cookie,

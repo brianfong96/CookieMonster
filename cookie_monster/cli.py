@@ -12,10 +12,14 @@ from .chrome_discovery import list_page_targets
 from .chrome_launcher import launch_browser, wait_for_debug_endpoint
 from .config import CaptureConfig, ReplayConfig
 from .crypto import resolve_key
+from .diffing import compare_capture_files
 from .doctor import run_doctor
 from .plugins import auto_detect_adapter, get_adapter, list_adapters
+from .recipes import Recipe, list_recipes, load_recipe, save_recipe
 from .replay import replay_with_capture
+from .session_health import analyze_session_health
 from .security_utils import redact_headers
+from .storage import load_captures
 
 
 def _tool_version() -> str:
@@ -122,6 +126,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     adapters_parser = subparsers.add_parser("adapter-list", help="List built-in site adapters")
     adapters_parser.add_argument("--verbose", action="store_true")
+
+    health_parser = subparsers.add_parser("session-health", help="Analyze token/session health from capture file")
+    health_parser.add_argument("--capture-file", required=True)
+    health_parser.add_argument("--encryption-key", default=None)
+    health_parser.add_argument("--encryption-key-env", default="COOKIE_MONSTER_ENCRYPTION_KEY")
+
+    diff_parser = subparsers.add_parser("diff-captures", help="Compare two capture files for header/method changes")
+    diff_parser.add_argument("--a", required=True, help="First capture file")
+    diff_parser.add_argument("--b", required=True, help="Second capture file")
+    diff_parser.add_argument("--a-key", default=None)
+    diff_parser.add_argument("--b-key", default=None)
+
+    recipe_save_parser = subparsers.add_parser("recipe-save", help="Save a named recipe from CLI options")
+    recipe_save_parser.add_argument("--name", required=True)
+    recipe_save_parser.add_argument("--capture-file", default="captures.jsonl")
+    recipe_save_parser.add_argument("--request-url", required=True)
+    recipe_save_parser.add_argument("--target-hint", default=None)
+    recipe_save_parser.add_argument("--url-contains", default=None)
+    recipe_save_parser.add_argument("--method", default="GET")
+    recipe_save_parser.add_argument("--adapter", default=None, choices=list_adapters())
+    recipe_save_parser.add_argument("--base-dir", default=None)
+
+    recipe_run_parser = subparsers.add_parser("recipe-run", help="Run capture+replay from named recipe")
+    recipe_run_parser.add_argument("--name", required=True)
+    recipe_run_parser.add_argument("--base-dir", default=None)
+    recipe_run_parser.add_argument("--duration", type=int, default=None)
+    recipe_run_parser.add_argument("--max-records", type=int, default=None)
+
+    recipe_list_parser = subparsers.add_parser("recipe-list", help="List saved recipes")
+    recipe_list_parser.add_argument("--base-dir", default=None)
 
     return parser
 
@@ -290,6 +324,75 @@ def main() -> None:
                 }
             )
         _emit({"adapters": detailed}, args.format)
+        return
+
+    if args.command == "session-health":
+        key = resolve_key(args.encryption_key, args.encryption_key_env)
+        captures = load_captures(args.capture_file, encryption_key=key)
+        health = analyze_session_health(captures)
+        _emit(
+            {
+                "has_cookie": health.has_cookie,
+                "bearer_token_count": health.bearer_token_count,
+                "jwt_expired": health.jwt_expired,
+                "jwt_expires_at": health.jwt_expires_at,
+            },
+            args.format,
+        )
+        return
+
+    if args.command == "diff-captures":
+        diff = compare_capture_files(args.a, args.b, encryption_key_a=args.a_key, encryption_key_b=args.b_key)
+        _emit(
+            {
+                "headers_added": diff.headers_added,
+                "headers_removed": diff.headers_removed,
+                "method_changed": diff.method_changed,
+            },
+            args.format,
+        )
+        return
+
+    if args.command == "recipe-save":
+        adapter = get_adapter(args.adapter) if args.adapter else None
+        defaults = adapter.defaults() if adapter else None
+        cap = CaptureConfig(
+            target_hint=args.target_hint or (defaults.target_hint if defaults else None),
+            output_file=args.capture_file,
+            filter_host_contains=(defaults.filter_host_contains if defaults else None),
+        )
+        rep = ReplayConfig(
+            capture_file=args.capture_file,
+            request_url=args.request_url,
+            method=args.method,
+            url_contains=args.url_contains or (defaults.replay_url_contains if defaults else None),
+            allowed_domains=list(defaults.allowed_domains) if defaults else [],
+        )
+        path = save_recipe(Recipe(name=args.name, capture=cap, replay=rep), base_dir=args.base_dir)
+        _emit({"saved": str(path), "name": args.name}, args.format)
+        return
+
+    if args.command == "recipe-list":
+        _emit({"recipes": list_recipes(base_dir=args.base_dir)}, args.format)
+        return
+
+    if args.command == "recipe-run":
+        recipe = load_recipe(args.name, base_dir=args.base_dir)
+        if args.duration is not None:
+            recipe.capture.duration_seconds = args.duration
+        if args.max_records is not None:
+            recipe.capture.max_records = args.max_records
+        captures = capture_requests(recipe.capture)
+        response = replay_with_capture(recipe.replay)
+        _emit(
+            {
+                "name": args.name,
+                "captured": len(captures),
+                "status_code": response.status_code,
+                "request_url": recipe.replay.request_url,
+            },
+            args.format,
+        )
         return
 
     parser.error("Unknown command")

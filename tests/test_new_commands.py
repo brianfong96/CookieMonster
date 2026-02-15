@@ -48,3 +48,12 @@ def test_adapter_list_command(monkeypatch, capsys):
     out = capsys.readouterr().out
     data = json.loads(out)
     assert "supabase" in data["adapters"]
+
+
+def test_recipe_list_command(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["cookie-monster", "recipe-list"])
+    monkeypatch.setattr("cookie_monster.cli.list_recipes", lambda base_dir=None: ["r1", "r2"])
+    cli.main()
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert "r1" in data["recipes"]

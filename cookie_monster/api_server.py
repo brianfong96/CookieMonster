@@ -7,8 +7,12 @@ from urllib.parse import urlparse
 
 from .capture import capture_requests
 from .chrome_discovery import list_page_targets
+from .diffing import compare_capture_files
 from .config import CaptureConfig, ReplayConfig
+from .crypto import resolve_key
 from .replay import replay_with_capture
+from .session_health import analyze_session_health
+from .storage import load_captures
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -40,6 +44,13 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                 try:
                     targets = list_page_targets("127.0.0.1", 9222)
                     _json_response(self, 200, {"targets": targets})
+                except Exception as exc:  # noqa: BLE001
+                    _json_response(self, 500, {"error": str(exc)})
+                return
+            if parsed.path == "/session-health":
+                try:
+                    # GET /session-health?capture_file=... is intentionally omitted; use POST for explicit body.
+                    _json_response(self, 400, {"error": "Use POST /session-health with JSON body"})
                 except Exception as exc:  # noqa: BLE001
                     _json_response(self, 500, {"error": str(exc)})
                 return
@@ -82,6 +93,47 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                             "content_type": response.headers.get("Content-Type", ""),
                             "body_preview": response.text[:400],
                             "config": asdict(config),
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _json_response(self, 500, {"error": str(exc)})
+                return
+
+            if parsed.path == "/session-health":
+                try:
+                    capture_file = str(payload["capture_file"])
+                    key = resolve_key(payload.get("encryption_key"), payload.get("encryption_key_env", "COOKIE_MONSTER_ENCRYPTION_KEY"))
+                    captures = load_captures(capture_file, encryption_key=key)
+                    health = analyze_session_health(captures)
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "has_cookie": health.has_cookie,
+                            "bearer_token_count": health.bearer_token_count,
+                            "jwt_expired": health.jwt_expired,
+                            "jwt_expires_at": health.jwt_expires_at,
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _json_response(self, 500, {"error": str(exc)})
+                return
+
+            if parsed.path == "/diff":
+                try:
+                    diff = compare_capture_files(
+                        str(payload["a"]),
+                        str(payload["b"]),
+                        encryption_key_a=payload.get("a_key"),
+                        encryption_key_b=payload.get("b_key"),
+                    )
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "headers_added": diff.headers_added,
+                            "headers_removed": diff.headers_removed,
+                            "method_changed": diff.method_changed,
                         },
                     )
                 except Exception as exc:  # noqa: BLE001

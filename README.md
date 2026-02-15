@@ -57,6 +57,12 @@ python3 -m pip install cookie-monster-cli
 - `cookie_monster/api_server.py`: local HTTP API mode
 - `cookie_monster/browser_profiles.py`: profile discovery from browser Local State
 - `cookie_monster/security_utils.py`: redaction + replay guardrails
+- `cookie_monster/client.py`: stable programmatic API (`CookieMonsterClient`)
+- `cookie_monster/browser_session.py`: context manager for launched browser lifecycle
+- `cookie_monster/policy.py`: replay policy engine (allow/deny rules)
+- `cookie_monster/recipes.py`: named workflow recipes
+- `cookie_monster/session_health.py`: cookie/JWT health checks
+- `cookie_monster/diffing.py`: capture-to-capture header/method diff
 
 ## Usage
 
@@ -174,6 +180,11 @@ Run diagnostics:
 ```bash
 cookie-monster doctor --browser chrome --chrome-host 127.0.0.1 --chrome-port 9222
 cookie-monster adapter-list --verbose
+cookie-monster session-health --capture-file data/captures.jsonl
+cookie-monster diff-captures --a data/captures-old.jsonl --b data/captures-new.jsonl
+cookie-monster recipe-save --name supabase --capture-file data/captures.jsonl --request-url https://supabase.com/dashboard/project/udnotkgtmnyxagnsmjxv --adapter supabase
+cookie-monster recipe-list
+cookie-monster recipe-run --name supabase
 ```
 
 Run local API mode:
@@ -187,6 +198,44 @@ Example API call:
 ```bash
 curl -sS http://127.0.0.1:8787/health
 curl -sS -X POST http://127.0.0.1:8787/capture -H 'content-type: application/json' -d '{\"duration_seconds\":10,\"target_hint\":\"supabase.com\"}'
+curl -sS -X POST http://127.0.0.1:8787/session-health -H 'content-type: application/json' -d '{\"capture_file\":\"data/captures.jsonl\"}'
+curl -sS -X POST http://127.0.0.1:8787/diff -H 'content-type: application/json' -d '{\"a\":\"data/captures-old.jsonl\",\"b\":\"data/captures-new.jsonl\"}'
+```
+
+## Library API (Programmatic Use)
+
+CookieMonster now exposes a stable library entrypoint:
+
+```python
+from cookie_monster import CookieMonsterClient, CaptureConfig, ReplayConfig
+from cookie_monster.policy import ReplayPolicy
+
+client = CookieMonsterClient(policy=ReplayPolicy(allowed_domains=[\"supabase.com\", \"api.supabase.com\"]))
+
+capture_result = client.capture(
+    CaptureConfig(
+        target_hint=\"supabase.com\",
+        include_all_headers=True,
+        output_file=\"captures.jsonl\",
+    )
+)
+
+replay_result = client.replay(
+    ReplayConfig(
+        capture_file=\"captures.jsonl\",
+        request_url=\"https://supabase.com/dashboard/project/udnotkgtmnyxagnsmjxv\",
+        allowed_domains=[\"supabase.com\"],
+        enforce_capture_host=False,
+    )
+)
+print(capture_result.count, replay_result.status_code)
+```
+
+Async methods are available:
+
+```python
+capture_result = await client.capture_async(CaptureConfig(...))
+replay_result = await client.replay_async(ReplayConfig(...))
 ```
 
 ## TDD and Tests
@@ -201,7 +250,7 @@ pytest
 
 Current local result:
 
-- `20 passed`
+- `33 passed`
 
 ## Man Page
 

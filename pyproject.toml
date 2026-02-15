@@ -45,6 +45,7 @@ dev = [
 
 [project.scripts]
 cookie-monster = "cookie_monster.cli:main"
+cm = "cookie_monster.cli:main"
 
 [tool.pytest.ini_options]
 addopts = "-q"

@@ -211,6 +211,8 @@ Launch:
 
 ```bash
 cookie-monster ui
+# or
+cm ui
 ```
 
 Then open:
@@ -218,6 +220,11 @@ Then open:
 ```text
 http://127.0.0.1:8787/ui
 ```
+
+Stop UI:
+
+- If running in current terminal: press `Ctrl+C`
+- If running in background: `pkill -f "cookie-monster ui"` (or `pkill -f "cm ui"`)
 
 UI features:
 - Enter URL and cache auth from your local profile into encrypted cache (`~/.cookie_monster/ui/captures.enc.jsonl`)

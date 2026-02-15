@@ -1,4 +1,5 @@
 import json
+
 import pytest
 
 from cookie_monster.config import ReplayConfig
@@ -115,3 +116,39 @@ def test_replay_enforces_allowed_domain(tmp_path):
     )
     with pytest.raises(RuntimeError):
         replay_with_capture(cfg)
+
+
+def test_replay_uses_captured_body_when_enabled(tmp_path, monkeypatch):
+    capture_file = tmp_path / "caps.jsonl"
+    capture_file.write_text(
+        json.dumps(
+            {
+                "request_id": "20",
+                "method": "POST",
+                "url": "https://api.example.com/items",
+                "headers": {"Cookie": "x=1"},
+                "post_data": "{\"name\":\"demo\"}",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    called = {}
+
+    def fake_request(method, url, headers, timeout, data=None, json=None):
+        called["data"] = data
+        called["json"] = json
+        return DummyResponse(status_code=200, text="ok")
+
+    monkeypatch.setattr("cookie_monster.replay.requests.request", fake_request)
+    cfg = ReplayConfig(
+        capture_file=str(capture_file),
+        request_url="https://api.example.com/items",
+        method="POST",
+        use_captured_body=True,
+    )
+    response = replay_with_capture(cfg)
+    assert response.status_code == 200
+    assert called["data"] == "{\"name\":\"demo\"}"
+    assert called["json"] is None

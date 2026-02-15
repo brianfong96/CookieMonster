@@ -49,6 +49,8 @@ def replay_with_capture(config: ReplayConfig) -> requests.Response:
         request_json = json.loads(Path(config.json_body_file).read_text(encoding="utf-8"))
     elif config.body is not None:
         request_data = config.body
+    elif config.use_captured_body and selected.post_data is not None:
+        request_data = selected.post_data
 
     max_attempts = max(1, int(config.retry_attempts))
     response: requests.Response | None = None

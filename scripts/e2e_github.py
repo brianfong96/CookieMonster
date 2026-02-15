@@ -4,7 +4,11 @@ import argparse
 import tempfile
 
 from cookie_monster.capture import capture_requests
-from cookie_monster.chrome_launcher import detect_browser_path, launch_browser, wait_for_debug_endpoint
+from cookie_monster.chrome_launcher import (
+    detect_browser_path,
+    launch_browser,
+    wait_for_debug_endpoint,
+)
 from cookie_monster.config import CaptureConfig, ReplayConfig
 from cookie_monster.replay import replay_with_capture
 

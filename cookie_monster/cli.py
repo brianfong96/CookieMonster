@@ -18,8 +18,8 @@ from .doctor import run_doctor
 from .plugins import auto_detect_adapter, get_adapter, list_adapters
 from .recipes import Recipe, list_recipes, load_recipe, save_recipe
 from .replay import replay_with_capture
-from .session_health import analyze_session_health
 from .security_utils import redact_headers
+from .session_health import analyze_session_health
 from .storage import load_captures
 
 
@@ -75,6 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--filter-path", default=None)
     capture_parser.add_argument("--filter-method", default=None)
     capture_parser.add_argument("--filter-resource-type", default=None)
+    capture_parser.add_argument("--capture-post-data", action="store_true")
+    capture_parser.add_argument("--max-post-data-bytes", type=int, default=65536)
     capture_parser.add_argument("--redact-output", action="store_true")
     capture_parser.add_argument("--launch-browser", action="store_true")
     capture_parser.add_argument("--launch-chrome", action="store_true", help="Deprecated alias")
@@ -97,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--output", default=None)
     replay_parser.add_argument("--data", default=None)
     replay_parser.add_argument("--json-body-file", default=None)
+    replay_parser.add_argument("--use-captured-body", action="store_true")
     replay_parser.add_argument("--retry-attempts", type=int, default=1)
     replay_parser.add_argument("--retry-backoff", type=float, default=0.5)
     replay_parser.add_argument("--allowed-domain", action="append", default=None)
@@ -124,10 +127,14 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="Run local HTTP API mode")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8787)
+    serve_parser.add_argument("--api-token", default=None)
+    serve_parser.add_argument("--api-token-env", default="COOKIE_MONSTER_API_TOKEN")
 
     ui_parser = subparsers.add_parser("ui", help="Run local UI for encrypted auth cache checks")
     ui_parser.add_argument("--host", default="127.0.0.1")
     ui_parser.add_argument("--port", type=int, default=8787)
+    ui_parser.add_argument("--api-token", default=None)
+    ui_parser.add_argument("--api-token-env", default="COOKIE_MONSTER_API_TOKEN")
     ui_parser.add_argument("--no-open", action="store_true")
 
     adapters_parser = subparsers.add_parser("adapter-list", help="List built-in site adapters")
@@ -206,6 +213,8 @@ def main() -> None:
             filter_path_contains=args.filter_path,
             filter_method=args.filter_method,
             filter_resource_type=args.filter_resource_type,
+            capture_post_data=args.capture_post_data,
+            max_post_data_bytes=args.max_post_data_bytes,
             encryption_key=encryption_key,
         )
         if adapter_defaults:
@@ -262,6 +271,7 @@ def main() -> None:
             output_file=args.output,
             body=args.data,
             json_body_file=args.json_body_file,
+            use_captured_body=args.use_captured_body,
             retry_attempts=args.retry_attempts,
             retry_backoff_seconds=args.retry_backoff,
             allowed_domains=allowed_domains,
@@ -309,13 +319,15 @@ def main() -> None:
         return
 
     if args.command == "serve":
-        serve_api(args.host, args.port)
+        api_token = resolve_key(args.api_token, args.api_token_env)
+        serve_api(args.host, args.port, api_token=api_token)
         return
 
     if args.command == "ui":
         if not args.no_open:
             webbrowser.open(f"http://{args.host}:{args.port}/ui")
-        serve_api(args.host, args.port)
+        api_token = resolve_key(args.api_token, args.api_token_env)
+        serve_api(args.host, args.port, api_token=api_token)
         return
 
     if args.command == "adapter-list":

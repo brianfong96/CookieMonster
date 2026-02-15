@@ -133,8 +133,26 @@ def test_main_capture_edge_uses_browser_path(monkeypatch, capsys):
 def test_ui_command_starts_server_without_open(monkeypatch):
     monkeypatch.setattr("sys.argv", ["cookie-monster", "ui", "--no-open", "--host", "127.0.0.1", "--port", "9999"])
     called = {}
-    monkeypatch.setattr("cookie_monster.cli.serve_api", lambda host, port: called.update({"host": host, "port": port}))
+    monkeypatch.setattr(
+        "cookie_monster.cli.serve_api",
+        lambda host, port, api_token=None: called.update({"host": host, "port": port, "api_token": api_token}),
+    )
     monkeypatch.setattr("cookie_monster.cli.webbrowser.open", lambda *_: (_ for _ in ()).throw(AssertionError("should not open")))
     cli.main()
     assert called["host"] == "127.0.0.1"
     assert called["port"] == 9999
+    assert called["api_token"] is None
+
+
+def test_serve_command_uses_api_token_env(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["cookie-monster", "serve", "--api-token-env", "CM_API_TOKEN_TEST"])
+    monkeypatch.setenv("CM_API_TOKEN_TEST", "abc123")
+    called = {}
+    monkeypatch.setattr(
+        "cookie_monster.cli.serve_api",
+        lambda host, port, api_token=None: called.update({"host": host, "port": port, "api_token": api_token}),
+    )
+    cli.main()
+    assert called["host"] == "127.0.0.1"
+    assert called["port"] == 8787
+    assert called["api_token"] == "abc123"

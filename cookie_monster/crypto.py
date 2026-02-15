@@ -34,7 +34,15 @@ def load_or_create_key(path: str) -> str:
     key_path = Path(path)
     key_path.parent.mkdir(parents=True, exist_ok=True)
     if key_path.exists():
+        try:
+            os.chmod(key_path, 0o600)
+        except OSError:
+            pass
         return key_path.read_text(encoding="utf-8").strip()
     key = Fernet.generate_key().decode("utf-8")
     key_path.write_text(key, encoding="utf-8")
+    try:
+        os.chmod(key_path, 0o600)
+    except OSError:
+        pass
     return key

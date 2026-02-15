@@ -24,6 +24,8 @@ class CaptureConfig:
     filter_path_contains: str | None = None
     filter_method: str | None = None
     filter_resource_type: str | None = None
+    capture_post_data: bool = False
+    max_post_data_bytes: int = 65536
     encryption_key: str | None = None
 
 
@@ -37,6 +39,7 @@ class ReplayConfig:
     output_file: str | None = None
     body: str | None = None
     json_body_file: str | None = None
+    use_captured_body: bool = False
     retry_attempts: int = 1
     retry_backoff_seconds: float = 0.5
     allowed_domains: list[str] = field(default_factory=list)

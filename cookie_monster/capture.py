@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import time
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
 
 from .cdp import CDPClient
 from .chrome_discovery import get_websocket_debug_url
@@ -13,6 +13,15 @@ from .storage import append_captures
 
 def _normalize_headers(headers: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in headers.items()}
+
+
+def _normalize_post_data(value: Any, max_bytes: int) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).encode("utf-8")
+    if len(raw) <= max_bytes:
+        return str(value)
+    return raw[:max_bytes].decode("utf-8", errors="ignore")
 
 
 def _filter_headers(
@@ -95,6 +104,10 @@ def capture_requests(config: CaptureConfig) -> list[CapturedRequest]:
                 state["method"] = req_method
                 state["url"] = url
                 state["resource_type"] = params.get("type")
+                if config.capture_post_data:
+                    state["post_data"] = _normalize_post_data(
+                        request.get("postData"), max(0, int(config.max_post_data_bytes))
+                    )
                 state.setdefault("headers", {}).update(
                     _normalize_headers(dict(request.get("headers", {})))
                 )
@@ -133,6 +146,26 @@ def capture_requests(config: CaptureConfig) -> list[CapturedRequest]:
                 ):
                     continue
 
+                post_data = None
+                if config.capture_post_data:
+                    post_data = (
+                        str(state["post_data"])
+                        if state.get("post_data") is not None
+                        else None
+                    )
+                    if post_data is None:
+                        try:
+                            result = client.send_command(
+                                "Network.getRequestPostData",
+                                {"requestId": request_id},
+                            )
+                            post_data = _normalize_post_data(
+                                result.get("postData"),
+                                max(0, int(config.max_post_data_bytes)),
+                            )
+                        except Exception:  # noqa: BLE001
+                            post_data = None
+
                 capture = CapturedRequest(
                     request_id=request_id,
                     method=str(state.get("method", "GET")),
@@ -143,6 +176,7 @@ def capture_requests(config: CaptureConfig) -> list[CapturedRequest]:
                         if state.get("resource_type") is not None
                         else None
                     ),
+                    post_data=post_data,
                 )
                 captured.append(capture)
                 emitted_request_ids.add(request_id)

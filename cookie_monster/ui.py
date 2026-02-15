@@ -46,6 +46,9 @@ def page_html() -> str:
   <div class='card'>
     <img src='/ui/logo.svg' alt='CookieMonster logo' style='max-width:100%; height:auto;' />
     <p class='muted'>Enter a URL, cache auth from your browser profile into an encrypted local file, and inspect if auth looks available.</p>
+    <div class='row'>
+      <input id='apiToken' placeholder='Optional API token (X-CM-Token)' />
+    </div>
   </div>
 
   <div class='card'>
@@ -71,7 +74,10 @@ def page_html() -> str:
 </div>
 <script>
 async function post(path, body){
-  const res = await fetch(path, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(body)});
+  const token = document.getElementById('apiToken').value.trim();
+  const headers = {'content-type':'application/json'};
+  if (token) headers['x-cm-token'] = token;
+  const res = await fetch(path, {method:'POST', headers, body:JSON.stringify(body)});
   return await res.json();
 }
 function hostFromUrl(u){ try{return new URL(u).hostname;}catch(_){return '';} }

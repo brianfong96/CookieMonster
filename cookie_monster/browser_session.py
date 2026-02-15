@@ -23,7 +23,7 @@ class BrowserSession:
         self.config = config
         self._proc: Popen[bytes] | None = None
 
-    def __enter__(self) -> "BrowserSession":
+    def __enter__(self) -> BrowserSession:
         self._proc = launch_browser(
             browser=self.config.browser,
             browser_path=self.config.browser_path,

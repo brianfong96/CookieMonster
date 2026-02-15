@@ -1,24 +1,28 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .capture import capture_requests
 from .browser_profiles import default_user_data_dir
 from .browser_session import BrowserLaunchConfig, BrowserSession
+from .capture import capture_requests
 from .chrome_discovery import list_page_targets
-from .diffing import compare_capture_files
 from .config import CaptureConfig, ReplayConfig
 from .crypto import load_or_create_key, resolve_key
+from .diffing import compare_capture_files
 from .plugins import auto_detect_adapter
 from .replay import replay_with_capture
-from .session_health import analyze_session_health
 from .security_utils import redact_headers, url_host
+from .session_health import analyze_session_health
 from .storage import load_captures
 from .ui import logo_svg, page_html
+
+MAX_JSON_BODY_BYTES = 1_048_576
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -32,11 +36,68 @@ def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) 
 
 def _read_json_body(handler: BaseHTTPRequestHandler) -> dict:
     length = int(handler.headers.get("Content-Length", "0"))
+    if length > MAX_JSON_BODY_BYTES:
+        raise ValueError(f"Request body too large; max {MAX_JSON_BODY_BYTES} bytes")
     data = handler.rfile.read(length) if length > 0 else b"{}"
     return json.loads(data.decode("utf-8"))
 
 
-def make_handler() -> type[BaseHTTPRequestHandler]:
+def _validate_http_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("URL must be an absolute http/https URL")
+    return value
+
+
+def _is_loopback_host(host: str) -> bool:
+    lowered = host.strip().lower()
+    if lowered == "localhost":
+        return True
+    try:
+        return ip_address(lowered).is_loopback
+    except ValueError:
+        return False
+
+
+def _enforce_local_bind(host: str) -> None:
+    if _is_loopback_host(host):
+        return
+    allow_remote = os.getenv("COOKIE_MONSTER_ALLOW_REMOTE", "").strip().lower() in {"1", "true", "yes"}
+    if not allow_remote:
+        raise RuntimeError(
+            "Refusing non-loopback bind without explicit override. "
+            "Use host=127.0.0.1/localhost or set COOKIE_MONSTER_ALLOW_REMOTE=1."
+        )
+
+
+def _safe_replay_config(config: ReplayConfig) -> dict:
+    payload = asdict(config)
+    if payload.get("encryption_key"):
+        payload["encryption_key"] = "***REDACTED***"
+    return payload
+
+
+def _is_authorized(handler: BaseHTTPRequestHandler, api_token: str | None) -> bool:
+    if not api_token:
+        return True
+    provided = (
+        handler.headers.get("X-CM-Token")
+        or handler.headers.get("X-API-Key")
+        or handler.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    )
+    return bool(provided) and provided == api_token
+
+
+def _capture_sample(captures: list, redact_output: bool) -> list[dict]:
+    sample = [c.to_dict() for c in captures[:3]]
+    if not redact_output:
+        return sample
+    for item in sample:
+        item["headers"] = redact_headers(dict(item.get("headers", {})))
+    return sample
+
+
+def make_handler(api_token: str | None = None) -> type[BaseHTTPRequestHandler]:
     state_dir = Path.home() / ".cookie_monster" / "ui"
     state_dir.mkdir(parents=True, exist_ok=True)
     default_capture_file = state_dir / "captures.enc.jsonl"
@@ -90,6 +151,9 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
             _json_response(self, 404, {"error": "Not found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            if not _is_authorized(self, api_token):
+                _json_response(self, 401, {"error": "Unauthorized"})
+                return
             parsed = urlparse(self.path)
             try:
                 payload = _read_json_body(self)
@@ -107,7 +171,10 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                         {
                             "captured": len(captures),
                             "output": config.output_file,
-                            "sample": [c.to_dict() for c in captures[:3]],
+                            "sample": _capture_sample(
+                                captures,
+                                redact_output=bool(payload.get("redact_output", True)),
+                            ),
                         },
                     )
                 except Exception as exc:  # noqa: BLE001
@@ -125,7 +192,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
                             "status_code": response.status_code,
                             "content_type": response.headers.get("Content-Type", ""),
                             "body_preview": response.text[:400],
-                            "config": asdict(config),
+                            "config": _safe_replay_config(config),
                         },
                     )
                 except Exception as exc:  # noqa: BLE001
@@ -175,7 +242,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
 
             if parsed.path == "/ui/cache-auth":
                 try:
-                    target_url = str(payload["url"])
+                    target_url = _validate_http_url(str(payload["url"]))
                     browser = str(payload.get("browser", "chrome"))
                     profile_directory = str(payload.get("profile_directory", "Default"))
                     user_data_dir = payload.get("user_data_dir") or default_user_data_dir(browser)
@@ -222,7 +289,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
 
             if parsed.path == "/ui/check-auth":
                 try:
-                    target_url = str(payload["url"])
+                    target_url = _validate_http_url(str(payload["url"]))
                     host = url_host(target_url)
                     key = _ui_key(payload)
                     capture_file = str(payload.get("capture_file") or default_capture_file)
@@ -250,7 +317,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
 
             if parsed.path == "/ui/inspect-auth":
                 try:
-                    target_url = str(payload["url"])
+                    target_url = _validate_http_url(str(payload["url"]))
                     host = url_host(target_url)
                     key = _ui_key(payload)
                     capture_file = str(payload.get("capture_file") or default_capture_file)
@@ -277,6 +344,7 @@ def make_handler() -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def serve_api(host: str = "127.0.0.1", port: int = 8787) -> None:
-    server = ThreadingHTTPServer((host, port), make_handler())
+def serve_api(host: str = "127.0.0.1", port: int = 8787, api_token: str | None = None) -> None:
+    _enforce_local_bind(host)
+    server = ThreadingHTTPServer((host, port), make_handler(api_token=api_token))
     server.serve_forever()

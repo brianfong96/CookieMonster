@@ -96,6 +96,7 @@ cookie-monster capture \
   --target-hint github.com \
   --duration 45 \
   --max-records 200 \
+  --capture-post-data \
   --output data/captures.jsonl
 ```
 
@@ -128,6 +129,18 @@ cookie-monster capture \
 ```
 
 ### 3. Replay using captured headers
+
+```bash
+cookie-monster replay \
+  --capture-file data/captures.jsonl \
+  --method POST \
+  --url-contains api.example.com \
+  --request-url https://api.example.com/v1/items \
+  --use-captured-body \
+  --allowed-domain api.example.com
+```
+
+For explicit bodies, override captured payload:
 
 ```bash
 cookie-monster replay \
@@ -193,7 +206,16 @@ Run local API mode:
 ```bash
 cookie-monster serve --host 127.0.0.1 --port 8787
 cookie-monster ui --host 127.0.0.1 --port 8787
+# Optional API auth token:
+cookie-monster serve --api-token 'replace-me'
+# Or from env:
+COOKIE_MONSTER_API_TOKEN='replace-me' cookie-monster ui
 ```
+
+Security note:
+- Non-loopback API binds are blocked by default.
+- To intentionally expose the API beyond localhost, set `COOKIE_MONSTER_ALLOW_REMOTE=1`.
+- If `--api-token` (or `COOKIE_MONSTER_API_TOKEN`) is set, POST API endpoints require `X-CM-Token`.
 
 Example API call:
 
@@ -278,9 +300,16 @@ Run tests:
 pytest
 ```
 
+Run lint:
+
+```bash
+ruff check .
+```
+
 Current local result:
 
-- `34 passed`
+- `41 passed`
+- `ruff check .` clean
 
 ## Man Page
 

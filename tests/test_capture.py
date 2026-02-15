@@ -14,6 +14,7 @@ class FakeCDPClient:
                     "request": {
                         "method": "GET",
                         "url": "https://github.com/settings/profile",
+                        "postData": '{"x":1}',
                         "headers": {"Accept": "application/json"},
                     },
                 },
@@ -90,3 +91,48 @@ def test_capture_all_headers_mode_keeps_non_auth_headers(monkeypatch):
     captures = capture_requests(cfg)
     assert captures
     assert "Accept" in captures[0].headers
+
+
+def test_capture_post_data_when_enabled(monkeypatch):
+    monkeypatch.setattr("cookie_monster.capture.get_websocket_debug_url", lambda *args, **kwargs: "ws://fake")
+    monkeypatch.setattr("cookie_monster.capture.CDPClient", FakeCDPClient)
+    monkeypatch.setattr("cookie_monster.capture.append_captures", lambda path, captures, encryption_key=None: None)
+
+    cfg = CaptureConfig(
+        duration_seconds=1,
+        max_records=10,
+        target_hint="github.com",
+        capture_post_data=True,
+    )
+    captures = capture_requests(cfg)
+    assert captures
+    assert captures[0].post_data == '{"x":1}'
+
+
+class FakeCDPNoInlinePostData(FakeCDPClient):
+    def __init__(self, ws_url):
+        super().__init__(ws_url)
+        self.events[0]["params"]["request"].pop("postData", None)
+
+    def send_command(self, method, params):
+        if method == "Network.enable":
+            return {}
+        if method == "Network.getRequestPostData":
+            return {"postData": "fallback-body"}
+        raise AssertionError(f"unexpected method {method}")
+
+
+def test_capture_post_data_falls_back_to_cdp_query(monkeypatch):
+    monkeypatch.setattr("cookie_monster.capture.get_websocket_debug_url", lambda *args, **kwargs: "ws://fake")
+    monkeypatch.setattr("cookie_monster.capture.CDPClient", FakeCDPNoInlinePostData)
+    monkeypatch.setattr("cookie_monster.capture.append_captures", lambda path, captures, encryption_key=None: None)
+
+    cfg = CaptureConfig(
+        duration_seconds=1,
+        max_records=10,
+        target_hint="github.com",
+        capture_post_data=True,
+    )
+    captures = capture_requests(cfg)
+    assert captures
+    assert captures[0].post_data == "fallback-body"

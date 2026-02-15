@@ -11,6 +11,7 @@ The project is packaged with `pyproject.toml` and exposes a real CLI entrypoint:
 - Command: `cookie-monster`
 - Module fallback: `python -m cookie_monster`
 - Supported OS: macOS and Windows (Python 3.10+)
+- PyPI package name: `cookie-monster-cli`
 
 Install locally:
 
@@ -24,9 +25,28 @@ Install with dev/test tooling:
 python3 -m pip install -e '.[dev]'
 ```
 
+Build release artifacts (PyPI-ready):
+
+```bash
+./scripts/release_pypi.sh
+```
+
+Publish to PyPI (maintainer credentials required):
+
+```bash
+python3 -m twine upload dist/*
+```
+
+After publish, users can install from anywhere:
+
+```bash
+python3 -m pip install cookie-monster-cli
+```
+
 ## Architecture (KISS + DRY)
 
 - `cookie_monster/chrome_discovery.py`: Chrome DevTools target discovery + startup retry
+- `cookie_monster/chrome_launcher.py`: browser launcher (`chrome`/`edge`) with profile support
 - `cookie_monster/cdp.py`: minimal websocket CDP client
 - `cookie_monster/capture.py`: network event capture pipeline
 - `cookie_monster/replay.py`: replay engine using captured headers
@@ -68,6 +88,33 @@ cookie-monster capture \
   --output data/captures.jsonl
 ```
 
+Or let CookieMonster launch Chrome directly with a specific profile:
+
+```bash
+cookie-monster capture \
+  --launch-browser \
+  --browser chrome \
+  --user-data-dir "/Users/brianfong/Library/Application Support/Google/Chrome" \
+  --profile-directory Default \
+  --open-url "https://supabase.com/dashboard/project/udnotkgtmnyxagnsmjxv" \
+  --target-hint supabase.com \
+  --include-all-headers \
+  --duration 30 \
+  --output data/supabase-captures.jsonl
+```
+
+Launch Edge instead:
+
+```bash
+cookie-monster capture \
+  --launch-browser \
+  --browser edge \
+  --open-url "https://mail.google.com" \
+  --target-hint google.com \
+  --duration 30 \
+  --output data/gmail-captures.jsonl
+```
+
 ### 3. Replay using captured headers
 
 ```bash
@@ -91,31 +138,75 @@ pytest
 
 Current local result:
 
-- `11 passed`
+- `16 passed`
 
-## E2E Script (Chrome + GitHub)
+## Man Page
+
+A manual page is included at:
+
+- `man/cookie-monster.1`
+
+View directly:
+
+```bash
+man ./man/cookie-monster.1
+```
+
+Install to user manpath (macOS/Linux):
+
+```bash
+mkdir -p "$HOME/.local/share/man/man1"
+cp man/cookie-monster.1 "$HOME/.local/share/man/man1/"
+man cookie-monster
+```
+
+## E2E Script (Any Site, Chrome or Edge)
 
 Automated smoke script:
 
 ```bash
-python3 scripts/e2e_github.py --duration 25
+python3 scripts/e2e_site.py --duration 25
 ```
 
 Optional headless mode:
 
 ```bash
-python3 scripts/e2e_github.py --duration 25 --headless
+python3 scripts/e2e_site.py --duration 25 --headless
 ```
 
-Use a specific Chrome profile (for existing logged-in GitHub session):
+Use a specific profile and browser:
 
 ```bash
-python3 scripts/e2e_github.py --duration 25 --user-data-dir "/path/to/chrome-profile"
+python3 scripts/e2e_site.py \
+  --browser edge \
+  --duration 25 \
+  --user-data-dir "/path/to/browser-user-data-dir" \
+  --target-url "https://mail.google.com" \
+  --target-hint google.com \
+  --replay-url "https://mail.google.com" \
+  --url-contains google.com \
+  --include-all-headers
 ```
 
-This script launches Chrome with remote debugging, captures GitHub request headers, then replays to `https://github.com/settings/profile` and writes:
+This script launches the chosen browser with remote debugging, captures request headers, then replays to your target URL and writes:
 
 - capture file: `/tmp/cookie-monster-github-captures.jsonl`
 - replay output: `/tmp/cookie-monster-github-response.json`
 
-If your GitHub session is logged in in that launched Chrome profile, replay should return an authenticated response; otherwise expect redirect/login response codes.
+If your session is logged in in that launched profile, replay should return authenticated content; otherwise expect login/redirect pages.
+
+## Publishing Checklist For Other Computers
+
+The repo now includes:
+
+- `pyproject.toml` with console script entrypoint (`cookie-monster`)
+- `LICENSE` (MIT)
+- `MANIFEST.in` (includes man page)
+- CI matrix workflow: `.github/workflows/ci.yml`
+- PyPI publish workflow: `.github/workflows/publish-pypi.yml`
+
+Before first public release:
+
+1. Create package on PyPI (`cookie-monster-cli`) and configure Trusted Publisher for this GitHub repo.
+2. Bump version in `pyproject.toml`.
+3. Create GitHub release (publish workflow uploads to PyPI).

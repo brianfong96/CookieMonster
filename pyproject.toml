@@ -9,15 +9,37 @@ description = "Capture auth headers from Chrome DevTools and replay requests for
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "CookieMonster Contributors" }]
-license = { text = "MIT" }
+license = "MIT"
+keywords = ["cli", "chrome", "devtools", "cookies", "auth", "automation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Software Development :: Testing",
+]
 dependencies = [
   "requests>=2.32.0",
   "websocket-client>=1.8.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/brianfong96/CookieMonster"
+Repository = "https://github.com/brianfong96/CookieMonster"
+Issues = "https://github.com/brianfong96/CookieMonster/issues"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
+  "build>=1.2.0",
+  "twine>=5.0.0",
 ]
 
 [project.scripts]

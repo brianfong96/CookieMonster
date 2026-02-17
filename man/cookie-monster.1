@@ -49,6 +49,18 @@ List saved recipes.
 .TP
 .B recipe-run
 Run capture+replay using saved recipe.
+.TP
+.B refresh-tab
+Refresh an existing browser tab without closing it.
+.TP
+.B navigate-tab
+Navigate an existing tab to a new URL.
+.TP
+.B open-tab
+Open a new browser tab.
+.TP
+.B close-tab
+Close a specific browser tab.
 .SH CAPTURE OPTIONS
 .TP
 .B \-\-browser
@@ -95,6 +107,31 @@ Fernet key for encrypted capture storage.
 .TP
 .B \-\-encryption-key-env
 Environment variable to read Fernet key from.
+.TP
+.B \-\-refresh-tab
+Refresh an existing tab instead of waiting for manual navigation.
+.TP
+.B \-\-refresh-target-id
+Target ID of the tab to refresh (default: auto-detect via \-\-target-hint).
+.TP
+.B \-\-ignore-cache
+Bypass browser cache when refreshing a tab.
+.SH TAB MANAGEMENT OPTIONS
+.TP
+.B \-\-target-id
+Target ID of the tab to operate on.
+.TP
+.B \-\-target-hint
+URL or title substring to find the tab.
+.TP
+.B \-\-ignore-cache
+Bypass browser cache (refresh-tab only).
+.TP
+.B \-\-timeout
+Page load timeout in seconds (default: 30).
+.TP
+.B \-\-url
+URL to open (open-tab) or navigate to (navigate-tab).
 .SH REPLAY OPTIONS
 .TP
 .B \-\-request-url
@@ -148,6 +185,11 @@ cookie-monster profile-list --browser chrome
 cookie-monster list-targets --chrome-host 127.0.0.1 --chrome-port 9222
 cookie-monster doctor --browser edge
 cookie-monster serve --host 127.0.0.1 --port 8787
+cookie-monster refresh-tab --target-hint github.com --ignore-cache
+cookie-monster navigate-tab https://example.com --target-hint github
+cookie-monster open-tab --url https://github.com
+cookie-monster close-tab --target-id AAA111
+cookie-monster capture --target-hint github.com --refresh-tab --ignore-cache
 .fi
 .SH MANUAL VIEW
 Use:

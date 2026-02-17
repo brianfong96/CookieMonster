@@ -27,6 +27,9 @@ class CaptureConfig:
     capture_post_data: bool = False
     max_post_data_bytes: int = 65536
     encryption_key: str | None = None
+    refresh_tab: bool = False
+    refresh_target_id: str | None = None
+    ignore_cache: bool = False
 
 
 @dataclass

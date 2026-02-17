@@ -9,6 +9,7 @@ from .chrome_discovery import get_websocket_debug_url
 from .config import CaptureConfig
 from .models import CapturedRequest
 from .storage import append_captures
+from .tab_manager import TabManager, TabManagerConfig
 
 
 def _normalize_headers(headers: dict[str, Any]) -> dict[str, str]:
@@ -60,6 +61,32 @@ def _request_matches_filters(
     return True
 
 
+def _refresh_target_tab(config: CaptureConfig) -> None:
+    """Refresh the browser tab that matches the capture target so new network
+    traffic is generated without manually interacting with the browser."""
+    mgr_config = TabManagerConfig(
+        chrome_host=config.chrome_host,
+        chrome_port=config.chrome_port,
+        ignore_cache=config.ignore_cache,
+    )
+    with TabManager(mgr_config) as mgr:
+        target_id = config.refresh_target_id
+        if not target_id:
+            tabs = mgr.list_tabs()
+            if config.target_hint:
+                lowered = config.target_hint.lower()
+                matched = [
+                    t for t in tabs
+                    if lowered in t.url.lower() or lowered in t.title.lower()
+                ]
+                if matched:
+                    target_id = matched[0].target_id
+            if not target_id and tabs:
+                target_id = tabs[0].target_id
+        if target_id:
+            mgr.refresh(target_id, ignore_cache=config.ignore_cache)
+
+
 def capture_requests(config: CaptureConfig) -> list[CapturedRequest]:
     ws_url = get_websocket_debug_url(config.chrome_host, config.chrome_port, config.target_hint)
     client = CDPClient(ws_url)
@@ -70,6 +97,11 @@ def capture_requests(config: CaptureConfig) -> list[CapturedRequest]:
     client.connect()
     try:
         client.send_command("Network.enable", {})
+
+        # If --refresh-tab is set, refresh the matched tab to trigger network
+        # traffic instead of waiting for the user to navigate manually.
+        if config.refresh_tab:
+            _refresh_target_tab(config)
 
         deadline = time.time() + config.duration_seconds
         while time.time() < deadline and len(captured) < config.max_records:

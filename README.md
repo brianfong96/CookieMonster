@@ -53,7 +53,7 @@ python3 -m pip install cookie-monster-cli
 - `cookie_monster/storage.py`: JSONL persistence/load
 - `cookie_monster/plugins/`: adapter scaffold + built-in adapters (`supabase`, `github`, `gmail`)
 - `cookie_monster/models.py`, `cookie_monster/config.py`: shared data contracts
-- `cookie_monster/cli.py`: command entrypoint (`capture`, `replay`, `profile-list`, `list-targets`, `doctor`, `serve`)
+- `cookie_monster/cli.py`: command entrypoint (`capture`, `replay`, `profile-list`, `list-targets`, `doctor`, `serve`, `refresh-tab`, `navigate-tab`, `open-tab`, `close-tab`)
 - `cookie_monster/api_server.py`: local HTTP API mode
 - `cookie_monster/ui.py`: simple browser UI and CookieMonster logo
 - `cookie_monster/browser_profiles.py`: profile discovery from browser Local State
@@ -64,6 +64,7 @@ python3 -m pip install cookie-monster-cli
 - `cookie_monster/recipes.py`: named workflow recipes
 - `cookie_monster/session_health.py`: cookie/JWT health checks
 - `cookie_monster/diffing.py`: capture-to-capture header/method diff
+- `cookie_monster/tab_manager.py`: keep tabs open and refresh/navigate without tearing them down
 
 ## Usage
 
@@ -126,6 +127,17 @@ cookie-monster capture \
   --target-hint google.com \
   --duration 30 \
   --output data/gmail-captures.jsonl
+```
+
+Capture while automatically refreshing the matched tab (no manual browser interaction needed):
+
+```bash
+cookie-monster capture \
+  --target-hint github.com \
+  --refresh-tab \
+  --ignore-cache \
+  --duration 30 \
+  --output data/captures.jsonl
 ```
 
 ### 3. Replay using captured headers
@@ -199,6 +211,25 @@ cookie-monster diff-captures --a data/captures-old.jsonl --b data/captures-new.j
 cookie-monster recipe-save --name supabase --capture-file data/captures.jsonl --request-url https://supabase.com/dashboard/project/udnotkgtmnyxagnsmjxv --adapter supabase
 cookie-monster recipe-list
 cookie-monster recipe-run --name supabase
+```
+
+Tab management (keep tabs open and refresh/navigate them):
+
+```bash
+# Refresh an existing tab (by URL substring match)
+cookie-monster refresh-tab --target-hint github.com
+
+# Refresh with cache bypass
+cookie-monster refresh-tab --target-hint github.com --ignore-cache
+
+# Navigate an existing tab to a new URL
+cookie-monster navigate-tab https://github.com/settings/profile --target-hint github
+
+# Open a new tab
+cookie-monster open-tab --url https://github.com
+
+# Close a specific tab by target ID
+cookie-monster close-tab --target-id AAA111
 ```
 
 Run local API mode:
@@ -281,6 +312,22 @@ replay_result = client.replay(
     )
 )
 print(capture_result.count, replay_result.status_code)
+```
+
+Tab management (keep tabs alive, refresh without closing):
+
+```python
+from cookie_monster import TabManager, TabManagerConfig
+
+with TabManager(TabManagerConfig()) as mgr:
+    tabs = mgr.list_tabs()
+    # Refresh a tab by its target ID
+    mgr.refresh(tabs[0].target_id)
+    # Navigate to a new URL without closing the tab
+    mgr.navigate(tabs[0].target_id, "https://github.com/settings/profile")
+    # Open and close tabs
+    handle = mgr.open_tab("https://example.com")
+    mgr.close_tab(handle.target_id)
 ```
 
 Async methods are available:

@@ -61,3 +61,46 @@ class CDPClient:
         if "method" not in message:
             return None
         return message
+
+    # ---- Page helpers ----
+
+    def navigate(self, url: str) -> dict[str, Any]:
+        """Navigate the attached page to *url* (``Page.navigate``)."""
+        return self.send_command("Page.navigate", {"url": url})
+
+    def reload(self, ignore_cache: bool = False) -> dict[str, Any]:
+        """Reload the current page (``Page.reload``)."""
+        return self.send_command("Page.reload", {"ignoreCache": ignore_cache})
+
+    def wait_for_load(self, timeout_seconds: float = 30.0) -> bool:
+        """Block until a ``Page.loadEventFired`` event arrives or *timeout_seconds* elapses."""
+        import time
+
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            remaining = max(0.1, deadline - time.time())
+            event = self.read_event(timeout_seconds=min(remaining, 1.0))
+            if event and event.get("method") == "Page.loadEventFired":
+                return True
+        return False
+
+    def enable_page_events(self) -> dict[str, Any]:
+        """Enable the Page domain so load/navigation events are emitted."""
+        return self.send_command("Page.enable", {})
+
+    # ---- Target / tab helpers ----
+
+    def create_target(self, url: str = "about:blank") -> str:
+        """Create a new tab and return its *targetId*."""
+        result = self.send_command("Target.createTarget", {"url": url})
+        return str(result.get("targetId", ""))
+
+    def close_target(self, target_id: str) -> bool:
+        """Close the tab identified by *target_id*."""
+        result = self.send_command("Target.closeTarget", {"targetId": target_id})
+        return bool(result.get("success", False))
+
+    def get_targets(self) -> list[dict[str, Any]]:
+        """Return a list of all targets (tabs) known by the browser."""
+        result = self.send_command("Target.getTargets", {})
+        return list(result.get("targetInfos", []))

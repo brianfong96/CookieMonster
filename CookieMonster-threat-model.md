@@ -30,6 +30,7 @@ Open questions that could materially change ranking:
 - Replay engine over HTTP: `/Users/brianfong/Repos/CookieMonster/cookie_monster/replay.py`
 - Local API/UI server: `/Users/brianfong/Repos/CookieMonster/cookie_monster/api_server.py`, `/Users/brianfong/Repos/CookieMonster/cookie_monster/ui.py`
 - Library wrapper/policy: `/Users/brianfong/Repos/CookieMonster/cookie_monster/client.py`, `/Users/brianfong/Repos/CookieMonster/cookie_monster/policy.py`
+- Tab manager (keep tabs open, refresh/navigate): `/Users/brianfong/Repos/CookieMonster/cookie_monster/tab_manager.py`
 
 ### Data flows and trust boundaries
 - User shell/UI -> CLI/API server  
@@ -91,6 +92,7 @@ flowchart TD
 | Surface | How reached | Trust boundary | Notes | Evidence (repo path / symbol) |
 |---|---|---|---|---|
 | CLI commands | Terminal invocation | User -> CLI | Broad control over capture/replay options | `/Users/brianfong/Repos/CookieMonster/cookie_monster/cli.py` `build_parser` |
+| CLI tab management | Terminal invocation | User -> CLI -> CDP | Refresh/navigate/open/close browser tabs via DevTools | `/Users/brianfong/Repos/CookieMonster/cookie_monster/tab_manager.py` `TabManager` |
 | Local API `POST /capture` | HTTP to local server | Local process -> API server | Triggers capture and emits sample payload | `/Users/brianfong/Repos/CookieMonster/cookie_monster/api_server.py` `do_POST` |
 | Local API `POST /replay` | HTTP to local server | Local process -> replay engine | Sends authenticated outbound request | `/Users/brianfong/Repos/CookieMonster/cookie_monster/api_server.py` `do_POST` |
 | UI cache endpoints | HTTP to `/ui/*` | Local process -> browser session/capture | Launches browser profile and captures auth | `/Users/brianfong/Repos/CookieMonster/cookie_monster/api_server.py` `/ui/cache-auth` |
@@ -131,6 +133,7 @@ For this repo, severity is driven by credential exposure and replay misuse poten
 | `/Users/brianfong/Repos/CookieMonster/cookie_monster/capture.py` | Captures high-value auth material and controls scope filters | TM-002, TM-005 |
 | `/Users/brianfong/Repos/CookieMonster/cookie_monster/cli.py` | Exposes override flags that can weaken security posture | TM-003 |
 | `/Users/brianfong/Repos/CookieMonster/cookie_monster/client.py` | Programmatic integration point where policy hooks may be bypassed by consumers | TM-003 |
+| `/Users/brianfong/Repos/CookieMonster/cookie_monster/tab_manager.py` | Persistent CDP connections to tabs; navigation/refresh could trigger auth flows on unintended URLs | TM-003 |
 
 ## Quality check
 - Entry points covered: CLI, local API endpoints, UI capture/check/inspect endpoints, file loaders.

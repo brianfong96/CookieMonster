@@ -21,6 +21,7 @@ from .replay import replay_with_capture
 from .security_utils import redact_headers
 from .session_health import analyze_session_health
 from .storage import load_captures
+from .tab_manager import TabManager, TabManagerConfig
 
 
 def _tool_version() -> str:
@@ -87,6 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--open-url", default=None)
     capture_parser.add_argument("--headless", action="store_true")
     capture_parser.add_argument("--keep-open", action="store_true")
+    capture_parser.add_argument("--refresh-tab", action="store_true", help="Refresh an existing tab instead of waiting for manual navigation")
+    capture_parser.add_argument("--refresh-target-id", default=None, help="Target ID of the tab to refresh (default: auto-detect via --target-hint)")
+    capture_parser.add_argument("--ignore-cache", action="store_true", help="Bypass browser cache when refreshing")
     capture_parser.add_argument("--encryption-key", default=None)
     capture_parser.add_argument("--encryption-key-env", default="COOKIE_MONSTER_ENCRYPTION_KEY")
 
@@ -170,6 +174,33 @@ def build_parser() -> argparse.ArgumentParser:
     recipe_list_parser = subparsers.add_parser("recipe-list", help="List saved recipes")
     recipe_list_parser.add_argument("--base-dir", default=None)
 
+    # ---- tab management commands ----
+    refresh_parser = subparsers.add_parser("refresh-tab", help="Refresh an existing browser tab without closing it")
+    refresh_parser.add_argument("--chrome-host", default="127.0.0.1")
+    refresh_parser.add_argument("--chrome-port", type=int, default=9222)
+    refresh_parser.add_argument("--target-id", default=None, help="Target ID of the tab to refresh (default: first tab)")
+    refresh_parser.add_argument("--target-hint", default=None, help="URL/title substring to find the tab")
+    refresh_parser.add_argument("--ignore-cache", action="store_true")
+    refresh_parser.add_argument("--timeout", type=float, default=30.0)
+
+    navigate_parser = subparsers.add_parser("navigate-tab", help="Navigate an existing tab to a new URL")
+    navigate_parser.add_argument("url", help="URL to navigate to")
+    navigate_parser.add_argument("--chrome-host", default="127.0.0.1")
+    navigate_parser.add_argument("--chrome-port", type=int, default=9222)
+    navigate_parser.add_argument("--target-id", default=None)
+    navigate_parser.add_argument("--target-hint", default=None)
+    navigate_parser.add_argument("--timeout", type=float, default=30.0)
+
+    open_tab_parser = subparsers.add_parser("open-tab", help="Open a new browser tab")
+    open_tab_parser.add_argument("--url", default="about:blank")
+    open_tab_parser.add_argument("--chrome-host", default="127.0.0.1")
+    open_tab_parser.add_argument("--chrome-port", type=int, default=9222)
+
+    close_tab_parser = subparsers.add_parser("close-tab", help="Close a specific browser tab")
+    close_tab_parser.add_argument("--target-id", required=True)
+    close_tab_parser.add_argument("--chrome-host", default="127.0.0.1")
+    close_tab_parser.add_argument("--chrome-port", type=int, default=9222)
+
     return parser
 
 
@@ -216,6 +247,9 @@ def main() -> None:
             capture_post_data=args.capture_post_data,
             max_post_data_bytes=args.max_post_data_bytes,
             encryption_key=encryption_key,
+            refresh_tab=args.refresh_tab,
+            refresh_target_id=args.refresh_target_id,
+            ignore_cache=args.ignore_cache,
         )
         if adapter_defaults:
             if config.target_hint is None:
@@ -417,6 +451,81 @@ def main() -> None:
             },
             args.format,
         )
+        return
+
+    if args.command == "refresh-tab":
+        mgr_config = TabManagerConfig(
+            chrome_host=args.chrome_host,
+            chrome_port=args.chrome_port,
+            load_timeout_seconds=args.timeout,
+            ignore_cache=args.ignore_cache,
+        )
+        with TabManager(mgr_config) as mgr:
+            target_id = args.target_id
+            if not target_id:
+                tabs = mgr.list_tabs()
+                if args.target_hint:
+                    lowered = args.target_hint.lower()
+                    matched = [
+                        t for t in tabs
+                        if lowered in t.url.lower() or lowered in t.title.lower()
+                    ]
+                    if not matched:
+                        raise RuntimeError(f"No tab matching hint '{args.target_hint}'")
+                    target_id = matched[0].target_id
+                elif tabs:
+                    target_id = tabs[0].target_id
+                else:
+                    raise RuntimeError("No open tabs found")
+            loaded = mgr.refresh(target_id, ignore_cache=args.ignore_cache)
+            _emit({"target_id": target_id, "refreshed": True, "loaded": loaded}, args.format)
+        return
+
+    if args.command == "navigate-tab":
+        mgr_config = TabManagerConfig(
+            chrome_host=args.chrome_host,
+            chrome_port=args.chrome_port,
+            load_timeout_seconds=args.timeout,
+        )
+        with TabManager(mgr_config) as mgr:
+            target_id = args.target_id
+            if not target_id:
+                tabs = mgr.list_tabs()
+                if args.target_hint:
+                    lowered = args.target_hint.lower()
+                    matched = [
+                        t for t in tabs
+                        if lowered in t.url.lower() or lowered in t.title.lower()
+                    ]
+                    if not matched:
+                        raise RuntimeError(f"No tab matching hint '{args.target_hint}'")
+                    target_id = matched[0].target_id
+                elif tabs:
+                    target_id = tabs[0].target_id
+                else:
+                    raise RuntimeError("No open tabs found")
+            loaded = mgr.navigate(target_id, args.url)
+            _emit({"target_id": target_id, "url": args.url, "loaded": loaded}, args.format)
+        return
+
+    if args.command == "open-tab":
+        mgr_config = TabManagerConfig(
+            chrome_host=args.chrome_host,
+            chrome_port=args.chrome_port,
+        )
+        with TabManager(mgr_config) as mgr:
+            handle = mgr.open_tab(args.url)
+            _emit({"target_id": handle.target_id, "url": handle.url}, args.format)
+        return
+
+    if args.command == "close-tab":
+        mgr_config = TabManagerConfig(
+            chrome_host=args.chrome_host,
+            chrome_port=args.chrome_port,
+        )
+        with TabManager(mgr_config) as mgr:
+            success = mgr.close_tab(args.target_id)
+            _emit({"target_id": args.target_id, "closed": success}, args.format)
         return
 
     parser.error("Unknown command")

@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 # Allow running from the repo root or the scripts/ directory.
 _repo_root = str(Path(__file__).resolve().parent.parent)
@@ -214,6 +215,15 @@ def _read_network_events(
 # ── extract helpers ───────────────────────────────────────────────────────────
 
 
+def _audience_domain(url: str) -> str:
+    """Extract the domain (netloc) from a URL for audience correlation."""
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc or url
+    except Exception:  # noqa: BLE001
+        return url
+
+
 def _extract_tokens(
     captures: list[dict[str, Any]],
     extract_keys: list[str],
@@ -233,6 +243,56 @@ def _extract_tokens(
         if all(v is not None for v in result.values()):
             break
     return result
+
+
+def _extract_token_details(
+    captures: list[dict[str, Any]],
+    extract_keys: list[str],
+) -> list[dict[str, str]]:
+    """Return **every** occurrence of the requested headers across all requests,
+    correlated with the audience URL and domain they were sent to.
+
+    Each entry is::
+
+        {
+            "header": "cookie",
+            "value": "session=xyz",
+            "audience_url": "https://api.github.com/graphql",
+            "audience_domain": "api.github.com",
+            "method": "POST",
+        }
+
+    Duplicate (header, value, audience_domain) combinations are collapsed so
+    the output stays compact even when a page fires many subrequests to the
+    same API with the same credentials.
+    """
+    wanted = {k.lower() for k in extract_keys}
+    details: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()  # (header, value, domain)
+
+    for entry in captures:
+        req_url = entry.get("url", "")
+        req_method = entry.get("method", "GET")
+        domain = _audience_domain(req_url)
+        headers = entry.get("headers", {})
+
+        for hk, hv in headers.items():
+            low = hk.lower()
+            if low not in wanted:
+                continue
+            dedup_key = (low, hv, domain)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            details.append({
+                "header": low,
+                "value": hv,
+                "audience_url": req_url,
+                "audience_domain": domain,
+                "method": req_method,
+            })
+
+    return details
 
 
 # ── profile resolution ────────────────────────────────────────────────────────
@@ -475,20 +535,24 @@ def run_scrape(cfg: ScrapeConfig) -> list[dict[str, Any]]:
                 )
 
                 tokens = _extract_tokens(raw_captures, spec.extract)
+                token_details = _extract_token_details(raw_captures, spec.extract)
 
                 entry: dict[str, Any] = {
                     "name": spec.name,
                     "url": spec.url,
                     "tokens": tokens,
+                    "token_details": token_details,
                     "raw_capture_count": len(raw_captures),
                 }
                 results.append(entry)
 
                 found = sum(1 for v in tokens.values() if v is not None)
+                n_audiences = len({d["audience_domain"] for d in token_details})
                 logger.info(
-                    "  → %d/%d tokens found, %d raw captures",
+                    "  → %d/%d tokens found, %d unique audience(s), %d raw captures",
                     found,
                     len(tokens),
+                    n_audiences,
                     len(raw_captures),
                 )
 
@@ -601,10 +665,23 @@ def main() -> None:
         found = sum(1 for v in entry["tokens"].values() if v is not None)
         total = len(entry["tokens"])
         status = "✓" if found == total else ("◐" if found else "✗")
-        print(f"  {status} {entry['name']}: {found}/{total} tokens captured")
+        details = entry.get("token_details", [])
+        n_audiences = len({d["audience_domain"] for d in details})
+        print(f"  {status} {entry['name']}: {found}/{total} tokens captured"
+              f" across {n_audiences} audience(s)")
         for key, val in entry["tokens"].items():
             preview = (val[:80] + "…") if val and len(val) > 80 else val
             print(f"      {key}: {preview}")
+        if details:
+            # Group details by audience domain for readability.
+            by_domain: dict[str, list[dict[str, str]]] = {}
+            for d in details:
+                by_domain.setdefault(d["audience_domain"], []).append(d)
+            for domain, items in by_domain.items():
+                print(f"      ── audience: {domain}")
+                for item in items:
+                    v_preview = (item['value'][:60] + '…') if len(item['value']) > 60 else item['value']
+                    print(f"         {item['method']} {item['header']}: {v_preview}")
     print()
 
 

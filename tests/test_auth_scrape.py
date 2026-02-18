@@ -99,6 +99,143 @@ def test_extract_tokens_empty_captures():
     assert tokens == {"cookie": None}
 
 
+# ── _audience_domain ─────────────────────────────────────────────────────────
+
+
+def test_audience_domain_extracts_netloc():
+    assert ast._audience_domain("https://api.github.com/graphql") == "api.github.com"
+    assert ast._audience_domain("http://localhost:8080/api") == "localhost:8080"
+
+
+def test_audience_domain_handles_bare_string():
+    assert ast._audience_domain("not-a-url") == "not-a-url"
+
+
+def test_audience_domain_handles_empty():
+    result = ast._audience_domain("")
+    assert isinstance(result, str)
+
+
+# ── _extract_token_details ───────────────────────────────────────────────────
+
+
+def test_extract_token_details_multiple_requests():
+    """Headers from different requests should each produce a detail entry."""
+    captures = [
+        {
+            "url": "https://github.com/",
+            "method": "GET",
+            "headers": {"Cookie": "session=abc", "Authorization": "Bearer tok1"},
+        },
+        {
+            "url": "https://api.github.com/graphql",
+            "method": "POST",
+            "headers": {"Cookie": "session=abc", "Authorization": "Bearer tok2"},
+        },
+    ]
+    details = ast._extract_token_details(captures, ["cookie", "authorization"])
+    assert len(details) >= 3  # at least 3 unique (header, value, domain)
+
+    # Both domains should appear.
+    domains = {d["audience_domain"] for d in details}
+    assert "github.com" in domains
+    assert "api.github.com" in domains
+
+    # Every entry should have all required keys.
+    for d in details:
+        assert "header" in d
+        assert "value" in d
+        assert "audience_url" in d
+        assert "audience_domain" in d
+        assert "method" in d
+
+
+def test_extract_token_details_deduplicates_same_value_same_domain():
+    """Same header+value+domain should be collapsed to one entry."""
+    captures = [
+        {
+            "url": "https://github.com/page1",
+            "method": "GET",
+            "headers": {"Cookie": "session=abc"},
+        },
+        {
+            "url": "https://github.com/page2",
+            "method": "GET",
+            "headers": {"Cookie": "session=abc"},
+        },
+    ]
+    details = ast._extract_token_details(captures, ["cookie"])
+    cookie_details = [d for d in details if d["header"] == "cookie"]
+    # Both requests go to github.com with the same cookie value → 1 entry.
+    assert len(cookie_details) == 1
+    assert cookie_details[0]["audience_domain"] == "github.com"
+
+
+def test_extract_token_details_different_values_same_domain():
+    """Different values for the same header on the same domain should NOT be deduped."""
+    captures = [
+        {
+            "url": "https://api.example.com/a",
+            "method": "GET",
+            "headers": {"Authorization": "Bearer token-A"},
+        },
+        {
+            "url": "https://api.example.com/b",
+            "method": "POST",
+            "headers": {"Authorization": "Bearer token-B"},
+        },
+    ]
+    details = ast._extract_token_details(captures, ["authorization"])
+    assert len(details) == 2
+    values = {d["value"] for d in details}
+    assert "Bearer token-A" in values
+    assert "Bearer token-B" in values
+
+
+def test_extract_token_details_empty_captures():
+    details = ast._extract_token_details([], ["cookie"])
+    assert details == []
+
+
+def test_extract_token_details_ignores_non_requested_headers():
+    captures = [
+        {
+            "url": "https://example.com/",
+            "method": "GET",
+            "headers": {"Cookie": "a=1", "X-Request-Id": "abc123"},
+        },
+    ]
+    details = ast._extract_token_details(captures, ["cookie"])
+    assert len(details) == 1
+    assert details[0]["header"] == "cookie"
+
+
+def test_extract_token_details_case_insensitive():
+    captures = [
+        {
+            "url": "https://example.com/",
+            "method": "GET",
+            "headers": {"AUTHORIZATION": "Bearer UP", "cookie": "low=1"},
+        },
+    ]
+    details = ast._extract_token_details(captures, ["Cookie", "Authorization"])
+    headers = {d["header"] for d in details}
+    assert "cookie" in headers
+    assert "authorization" in headers
+
+
+def test_extract_token_details_preserves_method():
+    captures = [
+        {
+            "url": "https://api.example.com/data",
+            "method": "POST",
+            "headers": {"Authorization": "Bearer x"},
+        },
+    ]
+    details = ast._extract_token_details(captures, ["authorization"])
+    assert details[0]["method"] == "POST"
+
+
 # ── _resolve_profile ─────────────────────────────────────────────────────────
 
 

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from .cdp import CDPClient
-from .chrome_discovery import get_websocket_debug_url, list_page_targets
+from .chrome_discovery import list_page_targets
 
 logger = logging.getLogger(__name__)
 

@@ -46,7 +46,7 @@ python3 -m pip install cookie-monster-cli
 ## Architecture (KISS + DRY)
 
 - `cookie_monster/chrome_discovery.py`: Chrome DevTools target discovery + startup retry
-- `cookie_monster/chrome_launcher.py`: browser launcher (`chrome`/`edge`) with profile support
+- `cookie_monster/chrome_launcher.py`: browser launcher (`chrome`/`edge`) with profile support + Windows 8.3 short-path handling
 - `cookie_monster/cdp.py`: minimal websocket CDP client
 - `cookie_monster/capture.py`: network event capture pipeline
 - `cookie_monster/replay.py`: replay engine using captured headers
@@ -65,6 +65,7 @@ python3 -m pip install cookie-monster-cli
 - `cookie_monster/session_health.py`: cookie/JWT health checks
 - `cookie_monster/diffing.py`: capture-to-capture header/method diff
 - `cookie_monster/tab_manager.py`: keep tabs open and refresh/navigate without tearing them down
+- `scripts/auth_scrape_tabs.py`: batch auth-token / cookie scraper (single browser, multiple tabs via JSON config)
 
 ## Usage
 
@@ -355,7 +356,7 @@ ruff check .
 
 Current local result:
 
-- `41 passed`
+- `pytest` – all tests passing
 - `ruff check .` clean
 
 ## Man Page
@@ -377,6 +378,50 @@ mkdir -p "$HOME/.local/share/man/man1"
 cp man/cookie-monster.1 "$HOME/.local/share/man/man1/"
 man cookie-monster
 ```
+
+## Batch Auth Scraper (Tab-based)
+
+The `scripts/auth_scrape_tabs.py` script opens one browser, creates a tab per target URL
+from a JSON config file, captures cookies and auth headers via CDP, then writes a
+consolidated results JSON file.  It is **idempotent**: if a browser with the debug port
+is already running it reuses it; otherwise it launches one automatically.
+
+Pre-requisite: the browser must be closed (or already running with `--remote-debugging-port`).
+
+Quick start:
+
+```bash
+# Copy sample config and edit
+cp scripts/auth_scrape_config.sample.json scripts/config/my_sites.json
+# Edit targets, email, output_file, etc.
+python scripts/auth_scrape_tabs.py --config scripts/config/my_sites.json -v
+```
+
+Minimal inline run (no config file):
+
+```bash
+python scripts/auth_scrape_tabs.py \
+  --url https://github.com/ \
+  --url https://github.com/settings/profile \
+  --extract cookie authorization
+```
+
+Config fields (see `scripts/auth_scrape_config.sample.json` for full schema):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `browser` | `"chrome"` | `"chrome"` or `"edge"` |
+| `email` | `null` | Profile display name or email – auto-resolves `profile_directory` |
+| `port` | `9222` | Chrome DevTools debug port |
+| `headless` | `false` | Run in headless mode |
+| `capture_duration_seconds` | `10` | How long to listen for network events per tab |
+| `settle_delay_seconds` | `3` | Wait after all tabs load before capturing |
+| `output_file` | `"auth_scrape_results.json"` | Path for JSON output |
+| `targets` | `[]` | Array of `{name, url, hint?, extract?}` objects |
+
+Output is a JSON array of `{name, url, tokens: {header: value}, raw_capture_count}`.
+The `scripts/config/` and `scripts/output/` directories are gitignored for local configs
+and results.
 
 ## E2E Script (Any Site, Chrome or Edge)
 

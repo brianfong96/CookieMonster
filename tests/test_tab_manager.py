@@ -3,8 +3,7 @@
 import json
 
 from cookie_monster import cli
-from cookie_monster.tab_manager import TabHandle, TabManager, TabManagerConfig
-
+from cookie_monster.tab_manager import TabManager, TabManagerConfig
 
 # ---------------------------------------------------------------------------
 # Helpers

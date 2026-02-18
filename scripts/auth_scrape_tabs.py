@@ -38,15 +38,15 @@ _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from cookie_monster.browser_profiles import default_user_data_dir, list_profiles
-from cookie_monster.cdp import CDPClient
-from cookie_monster.chrome_discovery import get_websocket_debug_url, list_page_targets
-from cookie_monster.chrome_launcher import (
+from cookie_monster.browser_profiles import default_user_data_dir, list_profiles  # noqa: E402
+from cookie_monster.cdp import CDPClient  # noqa: E402
+from cookie_monster.chrome_discovery import list_page_targets  # noqa: E402,F401
+from cookie_monster.chrome_launcher import (  # noqa: E402
     detect_browser_path,
     launch_browser,
     wait_for_debug_endpoint,
 )
-from cookie_monster.tab_manager import TabHandle, TabManager, TabManagerConfig
+from cookie_monster.tab_manager import TabHandle, TabManager, TabManagerConfig  # noqa: E402
 
 logger = logging.getLogger("auth_scrape_tabs")
 
@@ -94,7 +94,7 @@ class ScrapeConfig:
 
 def load_config(path: str) -> ScrapeConfig:
     """Load a :class:`ScrapeConfig` from a JSON file."""
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         raw: dict[str, Any] = json.load(fh)
 
     targets = [

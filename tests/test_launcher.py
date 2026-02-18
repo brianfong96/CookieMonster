@@ -8,10 +8,13 @@ class DummyProc:
 def test_launch_chrome_includes_profile_directory(monkeypatch):
     captured = {}
 
-    def fake_popen(args):
+    def fake_popen(args, **kwargs):
         captured["args"] = args
+        captured["kwargs"] = kwargs
         return DummyProc()
 
+    # Force non-Windows path so we exercise the simple list-of-args branch.
+    monkeypatch.setattr("cookie_monster.chrome_launcher.platform.system", lambda: "Darwin")
     monkeypatch.setattr("cookie_monster.chrome_launcher.subprocess.Popen", fake_popen)
 
     proc = chrome_launcher.launch_chrome(
@@ -30,6 +33,58 @@ def test_launch_chrome_includes_profile_directory(monkeypatch):
     assert "--remote-allow-origins=*" in args
     assert "--headless=new" in args
     assert "--new-window" in args
+
+
+def test_launch_browser_windows_handles_spaces(monkeypatch):
+    """On Windows, paths with spaces should be converted to 8.3 short form."""
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return DummyProc()
+
+    monkeypatch.setattr("cookie_monster.chrome_launcher.platform.system", lambda: "Windows")
+    monkeypatch.setattr("cookie_monster.chrome_launcher.subprocess.Popen", fake_popen)
+
+    # Mock GetShortPathNameW to return a predictable short path.
+    def fake_short_path(path, buf, size):
+        if " " in path:
+            short = path.replace("User Data", "USERDA~1")
+            # Write into pre-existing buffer (buf is already allocated)
+            for i, ch in enumerate(short):
+                buf[i] = ch
+            buf[len(short)] = "\0"
+            return len(short)
+        return 0
+
+    monkeypatch.setattr("cookie_monster.chrome_launcher.ctypes.windll.kernel32.GetShortPathNameW", fake_short_path)
+
+    proc = chrome_launcher.launch_browser(
+        browser="chrome",
+        browser_path="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        host="127.0.0.1",
+        port=9222,
+        user_data_dir="C:\\Users\\test\\AppData\\Local\\Google\\Chrome\\User Data",
+        profile_directory="Default",
+        open_url="https://example.com",
+        headless=False,
+    )
+
+    assert isinstance(proc, DummyProc)
+    args = captured["args"]
+
+    # The user-data-dir should have the short path (no spaces).
+    udd_arg = [a for a in args if a.startswith("--user-data-dir=")][0]
+    assert "USERDA~1" in udd_arg
+    assert "User Data" not in udd_arg
+
+    # --enable-logging should be automatically added on Windows.
+    assert "--enable-logging" in args
+
+    # CREATE_NEW_CONSOLE should be in Popen kwargs.
+    import subprocess
+    assert captured["kwargs"].get("creationflags") == subprocess.CREATE_NEW_CONSOLE
 
 
 def test_wait_for_debug_endpoint_retries(monkeypatch):

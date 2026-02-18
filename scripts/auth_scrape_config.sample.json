@@ -1,0 +1,42 @@
+{
+  "browser": "chrome",
+  "browser_path": null,
+  "host": "127.0.0.1",
+  "port": 9222,
+  "headless": false,
+  "user_data_dir": null,
+  "profile_directory": null,
+  "email": null,
+  "load_timeout_seconds": 30,
+  "capture_duration_seconds": 10,
+  "settle_delay_seconds": 3,
+  "output_file": "auth_scrape_results.json",
+  "include_all_headers": false,
+  "header_allowlist": [
+    "cookie",
+    "authorization",
+    "x-csrf-token",
+    "x-xsrf-token",
+    "set-cookie"
+  ],
+  "targets": [
+    {
+      "name": "GitHub Dashboard",
+      "url": "https://github.com/",
+      "hint": "github.com",
+      "extract": ["cookie", "authorization"]
+    },
+    {
+      "name": "GitHub Settings",
+      "url": "https://github.com/settings/profile",
+      "hint": "github.com",
+      "extract": ["cookie", "authorization", "x-csrf-token"]
+    },
+    {
+      "name": "Example API",
+      "url": "https://api.example.com/v1/me",
+      "hint": "example.com",
+      "extract": ["authorization"]
+    }
+  ]
+}

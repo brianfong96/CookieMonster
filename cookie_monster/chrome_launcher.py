@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import os
 import platform
 import subprocess
@@ -83,6 +84,41 @@ def launch_browser(
         args.append("--headless=new")
     if open_url:
         args.extend(["--new-window", open_url])
+
+    # On Windows, Chrome needs special handling for two reasons:
+    # 1. Paths with spaces (e.g. "User Data") must use the Windows 8.3
+    #    short path to avoid Chrome's CLI parser splitting the argument.
+    # 2. Chrome must be launched in its own console (CREATE_NEW_CONSOLE)
+    #    so the debug port binds reliably when spawned from Python.
+    if platform.system().lower() == "windows":
+        if "--enable-logging" not in args:
+            args.append("--enable-logging")
+
+        # Convert any path with spaces to the Windows 8.3 short form so
+        # Chrome's command-line parser never sees embedded spaces.
+        def _short_path(p: str) -> str:
+            if " " not in p:
+                return p
+            buf = ctypes.create_unicode_buffer(260)
+            n = ctypes.windll.kernel32.GetShortPathNameW(p, buf, 260)
+            return buf.value if n else p  # fall back to original on error
+
+        def _fix_arg(a: str) -> str:
+            if "=" in a:
+                flag, _, value = a.partition("=")
+                return f"{flag}={_short_path(value)}"
+            if " " in a and not a.startswith("-"):
+                return _short_path(a)
+            return a
+
+        args = [_fix_arg(a) for a in args]
+
+        return subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )  # type: ignore[return-value]
 
     return subprocess.Popen(args)
 

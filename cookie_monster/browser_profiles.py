@@ -45,3 +45,57 @@ def list_profiles(user_data_dir: str) -> list[dict[str, str]]:
             }
         )
     return sorted(profiles, key=lambda p: p["profile_directory"])
+
+
+def resolve_profile(
+    email: str,
+    browser: str = "chrome",
+    user_data_dir: str | None = None,
+) -> tuple[str, str]:
+    """Resolve an email or display name to a Chrome/Edge profile directory.
+
+    Parameters
+    ----------
+    email:
+        The Google account email **or** profile display name to match
+        (case-insensitive).
+    browser:
+        ``"chrome"`` or ``"edge"``.
+    user_data_dir:
+        Explicit user data directory.  If *None*, the platform default for
+        *browser* is detected automatically.
+
+    Returns
+    -------
+    tuple[str, str]
+        ``(user_data_dir, profile_directory)`` — both resolved values.
+
+    Raises
+    ------
+    RuntimeError
+        If no matching profile is found or the data directory cannot be
+        determined.
+    """
+    data_dir = user_data_dir or default_user_data_dir(browser)
+    if not data_dir:
+        raise RuntimeError(
+            f"Cannot auto-detect profile: no user_data_dir and could not find "
+            f"the default {browser} data directory."
+        )
+
+    profiles = list_profiles(data_dir)
+    needle = email.strip().lower()
+    for p in profiles:
+        if (
+            (p["email"] and p["email"].lower() == needle)
+            or p["name"].lower() == needle
+        ):
+            return data_dir, p["profile_directory"]
+
+    available = ", ".join(
+        f"{p['name']} / {p['email']} ({p['profile_directory']})" for p in profiles
+    )
+    raise RuntimeError(
+        f"No {browser} profile found for '{email}'. "
+        f"Available profiles: {available}"
+    )

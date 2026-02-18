@@ -118,3 +118,58 @@ def test_detect_edge_path_on_macos(monkeypatch):
     )
     path = chrome_launcher.detect_browser_path("edge")
     assert path == "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+
+
+# ── browser_is_reachable ─────────────────────────────────────────────────────
+
+
+def test_browser_is_reachable_true(monkeypatch):
+    class FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(
+        "cookie_monster.chrome_launcher.urllib.request.urlopen",
+        lambda url, timeout=1: FakeResp(),
+    )
+    assert chrome_launcher.browser_is_reachable("127.0.0.1", 9222) is True
+
+
+def test_browser_is_reachable_false(monkeypatch):
+    monkeypatch.setattr(
+        "cookie_monster.chrome_launcher.urllib.request.urlopen",
+        lambda url, timeout=1: (_ for _ in ()).throw(ConnectionError("nope")),
+    )
+    assert chrome_launcher.browser_is_reachable("127.0.0.1", 9222) is False
+
+
+# ── is_browser_process_running ───────────────────────────────────────────────
+
+
+def test_is_browser_process_running_windows(monkeypatch):
+    monkeypatch.setattr("cookie_monster.chrome_launcher.platform.system", lambda: "Windows")
+
+    class FakeResult:
+        stdout = "chrome.exe   1234 Console  0  12,345 K"
+
+    monkeypatch.setattr(
+        "cookie_monster.chrome_launcher.subprocess.run",
+        lambda *a, **kw: FakeResult(),
+    )
+    assert chrome_launcher.is_browser_process_running("chrome") is True
+
+
+def test_is_browser_process_running_not_found(monkeypatch):
+    monkeypatch.setattr("cookie_monster.chrome_launcher.platform.system", lambda: "Windows")
+
+    class FakeResult:
+        stdout = "INFO: No tasks are running which match the specified criteria."
+
+    monkeypatch.setattr(
+        "cookie_monster.chrome_launcher.subprocess.run",
+        lambda *a, **kw: FakeResult(),
+    )
+    assert chrome_launcher.is_browser_process_running("chrome") is False

@@ -53,6 +53,46 @@ def wait_for_debug_endpoint(host: str, port: int, timeout_seconds: int = 15) -> 
     raise RuntimeError(f"Chrome DevTools endpoint did not come up at {url}")
 
 
+def browser_is_reachable(host: str, port: int) -> bool:
+    """Return ``True`` if a DevTools endpoint is already listening."""
+    url = f"http://{host}:{port}/json/version"
+    try:
+        with urllib.request.urlopen(url, timeout=5):
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def is_browser_process_running(browser: str) -> bool:
+    """Return ``True`` if any process matching *browser* is running.
+
+    On Windows this checks ``tasklist``; on POSIX it uses ``pgrep``.
+    """
+    name_map = {"chrome": "chrome", "edge": "msedge"}
+    needle = name_map.get(browser.lower(), browser.lower())
+    system = platform.system().lower()
+
+    try:
+        if "windows" in system:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {needle}.exe", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return needle.lower() in result.stdout.lower()
+        else:
+            result = subprocess.run(
+                ["pgrep", "-if", needle],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def launch_browser(
     browser: str,
     browser_path: str | None,

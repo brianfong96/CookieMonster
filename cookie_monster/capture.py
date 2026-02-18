@@ -11,6 +11,96 @@ from .models import CapturedRequest
 from .storage import append_captures
 from .tab_manager import TabManager, TabManagerConfig
 
+# ── extract helpers ───────────────────────────────────────────────────────────
+
+
+def audience_domain(url: str) -> str:
+    """Extract the domain (netloc) from a URL for audience correlation."""
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc or url
+    except Exception:  # noqa: BLE001
+        return url
+
+
+def extract_tokens(
+    captures: list[dict[str, Any]],
+    extract_keys: list[str],
+) -> dict[str, str | None]:
+    """Pull the first occurrence of each requested header from captured traffic.
+
+    *captures* is a list of dicts with a ``"headers"`` key mapping header
+    names to values.  *extract_keys* lists the header names to look for
+    (case-insensitive).  Returns ``{key_lower: value_or_None}``.
+    """
+    result: dict[str, str | None] = {k.lower(): None for k in extract_keys}
+    for entry in captures:
+        headers = entry.get("headers", {})
+        for key in extract_keys:
+            low = key.lower()
+            if result.get(low) is not None:
+                continue
+            for hk, hv in headers.items():
+                if hk.lower() == low:
+                    result[low] = hv
+                    break
+        if all(v is not None for v in result.values()):
+            break
+    return result
+
+
+def extract_token_details(
+    captures: list[dict[str, Any]],
+    extract_keys: list[str],
+) -> list[dict[str, str]]:
+    """Return **every** occurrence of the requested headers across all requests,
+    correlated with the audience URL and domain they were sent to.
+
+    Each entry is::
+
+        {
+            "header": "cookie",
+            "value": "session=xyz",
+            "audience_url": "https://api.github.com/graphql",
+            "audience_domain": "api.github.com",
+            "method": "POST",
+        }
+
+    Duplicate (header, value, audience_domain) combinations are collapsed so
+    the output stays compact even when a page fires many subrequests to the
+    same API with the same credentials.
+    """
+    wanted = {k.lower() for k in extract_keys}
+    details: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()  # (header, value, domain)
+
+    for entry in captures:
+        req_url = entry.get("url", "")
+        req_method = entry.get("method", "GET")
+        domain = audience_domain(req_url)
+        headers = entry.get("headers", {})
+
+        for hk, hv in headers.items():
+            low = hk.lower()
+            if low not in wanted:
+                continue
+            dedup_key = (low, hv, domain)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            details.append({
+                "header": low,
+                "value": hv,
+                "audience_url": req_url,
+                "audience_domain": domain,
+                "method": req_method,
+            })
+
+    return details
+
+
+# ── header helpers ────────────────────────────────────────────────────────────
+
 
 def _normalize_headers(headers: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in headers.items()}

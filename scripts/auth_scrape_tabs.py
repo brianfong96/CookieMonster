@@ -32,18 +32,22 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 # Allow running from the repo root or the scripts/ directory.
 _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from cookie_monster.browser_profiles import default_user_data_dir, list_profiles  # noqa: E402
+from cookie_monster.browser_profiles import resolve_profile  # noqa: E402
+from cookie_monster.capture import (  # noqa: E402
+    extract_token_details,
+    extract_tokens,
+)
 from cookie_monster.cdp import CDPClient  # noqa: E402
-from cookie_monster.chrome_discovery import list_page_targets  # noqa: E402,F401
 from cookie_monster.chrome_launcher import (  # noqa: E402
+    browser_is_reachable,
     detect_browser_path,
+    is_browser_process_running,
     launch_browser,
     wait_for_debug_endpoint,
 )
@@ -212,178 +216,28 @@ def _read_network_events(
     return captured
 
 
-# ── extract helpers ───────────────────────────────────────────────────────────
-
-
-def _audience_domain(url: str) -> str:
-    """Extract the domain (netloc) from a URL for audience correlation."""
-    try:
-        parsed = urlparse(url)
-        return parsed.netloc or url
-    except Exception:  # noqa: BLE001
-        return url
-
-
-def _extract_tokens(
-    captures: list[dict[str, Any]],
-    extract_keys: list[str],
-) -> dict[str, str | None]:
-    """Pull the first occurrence of each requested header from captured traffic."""
-    result: dict[str, str | None] = {k.lower(): None for k in extract_keys}
-    for entry in captures:
-        headers = entry.get("headers", {})
-        for key in extract_keys:
-            low = key.lower()
-            if result.get(low) is not None:
-                continue
-            for hk, hv in headers.items():
-                if hk.lower() == low:
-                    result[low] = hv
-                    break
-        if all(v is not None for v in result.values()):
-            break
-    return result
-
-
-def _extract_token_details(
-    captures: list[dict[str, Any]],
-    extract_keys: list[str],
-) -> list[dict[str, str]]:
-    """Return **every** occurrence of the requested headers across all requests,
-    correlated with the audience URL and domain they were sent to.
-
-    Each entry is::
-
-        {
-            "header": "cookie",
-            "value": "session=xyz",
-            "audience_url": "https://api.github.com/graphql",
-            "audience_domain": "api.github.com",
-            "method": "POST",
-        }
-
-    Duplicate (header, value, audience_domain) combinations are collapsed so
-    the output stays compact even when a page fires many subrequests to the
-    same API with the same credentials.
-    """
-    wanted = {k.lower() for k in extract_keys}
-    details: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str]] = set()  # (header, value, domain)
-
-    for entry in captures:
-        req_url = entry.get("url", "")
-        req_method = entry.get("method", "GET")
-        domain = _audience_domain(req_url)
-        headers = entry.get("headers", {})
-
-        for hk, hv in headers.items():
-            low = hk.lower()
-            if low not in wanted:
-                continue
-            dedup_key = (low, hv, domain)
-            if dedup_key in seen:
-                continue
-            seen.add(dedup_key)
-            details.append({
-                "header": low,
-                "value": hv,
-                "audience_url": req_url,
-                "audience_domain": domain,
-                "method": req_method,
-            })
-
-    return details
-
-
 # ── profile resolution ────────────────────────────────────────────────────────
 
 
 def _resolve_profile(cfg: ScrapeConfig) -> None:
-    """If *email* is set but *profile_directory* is not, enumerate Chrome/Edge
-    profiles and resolve the matching profile directory in-place.
+    """If *email* is set but *profile_directory* is not, resolve it via
+    :func:`cookie_monster.browser_profiles.resolve_profile`.
     """
     if not cfg.email or cfg.profile_directory:
         return  # nothing to resolve
 
-    data_dir = cfg.user_data_dir or default_user_data_dir(cfg.browser)
-    if not data_dir:
-        raise RuntimeError(
-            f"Cannot auto-detect profile: no user_data_dir and could not find "
-            f"the default {cfg.browser} data directory."
-        )
-
-    # Persist the resolved data dir so launch_browser uses the real profile root.
+    data_dir, profile_dir = resolve_profile(
+        email=cfg.email,
+        browser=cfg.browser,
+        user_data_dir=cfg.user_data_dir,
+    )
     cfg.user_data_dir = data_dir
-
-    profiles = list_profiles(data_dir)
-    needle = cfg.email.strip().lower()
-    for p in profiles:
-        # Match on email first, then fall back to profile display name.
-        if (
-            (p["email"] and p["email"].lower() == needle)
-            or p["name"].lower() == needle
-        ):
-            cfg.profile_directory = p["profile_directory"]
-            logger.info(
-                "Resolved '%s' → profile '%s' (%s)",
-                cfg.email,
-                p["name"],
-                p["profile_directory"],
-            )
-            return
-
-    available = ", ".join(
-        f"{p['name']} / {p['email']} ({p['profile_directory']})" for p in profiles
+    cfg.profile_directory = profile_dir
+    logger.info(
+        "Resolved '%s' → profile '%s'",
+        cfg.email,
+        profile_dir,
     )
-    raise RuntimeError(
-        f"No {cfg.browser} profile found for '{cfg.email}'. "
-        f"Available profiles: {available}"
-    )
-
-
-# ── browser lifecycle (idempotent) ────────────────────────────────────────────
-
-
-def _browser_is_reachable(host: str, port: int) -> bool:
-    """Return ``True`` if a DevTools endpoint is already listening."""
-    import urllib.request
-
-    url = f"http://{host}:{port}/json/version"
-    try:
-        with urllib.request.urlopen(url, timeout=5):
-            return True
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def _is_browser_process_running(browser: str) -> bool:
-    """Return ``True`` if any process matching *browser* is running."""
-    import platform
-    import subprocess
-
-    name_map = {"chrome": "chrome", "edge": "msedge"}
-    needle = name_map.get(browser.lower(), browser.lower())
-    system = platform.system().lower()
-
-    try:
-        if "windows" in system:
-            result = subprocess.run(
-                ["tasklist", "/FI", f"IMAGENAME eq {needle}.exe", "/NH"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return needle.lower() in result.stdout.lower()
-        else:
-            result = subprocess.run(
-                ["pgrep", "-if", needle],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return result.returncode == 0
-    except Exception:  # noqa: BLE001
-        return False
 
 
 # ── main orchestration ────────────────────────────────────────────────────────
@@ -408,7 +262,7 @@ def run_scrape(cfg: ScrapeConfig) -> list[dict[str, Any]]:
         )
 
     # ── idempotent browser start ──
-    already_running = _browser_is_reachable(cfg.host, cfg.port)
+    already_running = browser_is_reachable(cfg.host, cfg.port)
     proc = None  # only set when *we* launched the browser
 
     if already_running:
@@ -419,7 +273,7 @@ def run_scrape(cfg: ScrapeConfig) -> list[dict[str, Any]]:
         )
     else:
         # Check if the browser is running *without* a debug port.
-        if _is_browser_process_running(cfg.browser):
+        if is_browser_process_running(cfg.browser):
             logger.warning(
                 "%s is running but NOT with --remote-debugging-port=%d. "
                 "Please close all %s windows first, or start %s manually with: "
@@ -534,8 +388,8 @@ def run_scrape(cfg: ScrapeConfig) -> list[dict[str, Any]]:
                     include_all=cfg.include_all_headers,
                 )
 
-                tokens = _extract_tokens(raw_captures, spec.extract)
-                token_details = _extract_token_details(raw_captures, spec.extract)
+                tokens = extract_tokens(raw_captures, spec.extract)
+                token_details = extract_token_details(raw_captures, spec.extract)
 
                 entry: dict[str, Any] = {
                     "name": spec.name,

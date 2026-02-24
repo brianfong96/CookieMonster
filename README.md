@@ -10,7 +10,7 @@ The project is packaged with `pyproject.toml` and exposes a real CLI entrypoint:
 
 - Command: `cookie-monster`
 - Module fallback: `python -m cookie_monster`
-- Supported OS: macOS and Windows (Python 3.10+)
+- Supported OS: macOS, Linux, and Windows (Python 3.10+)
 - PyPI package name: `cookie-monster-cli`
 
 Install locally:

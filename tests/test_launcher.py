@@ -46,6 +46,7 @@ def test_launch_browser_windows_handles_spaces(monkeypatch):
 
     monkeypatch.setattr("cookie_monster.chrome_launcher.platform.system", lambda: "Windows")
     monkeypatch.setattr("cookie_monster.chrome_launcher.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("cookie_monster.chrome_launcher.subprocess.CREATE_NEW_CONSOLE", 16, raising=False)
 
     # Mock GetShortPathNameW to return a predictable short path.
     def fake_short_path(path, buf, size):
@@ -58,7 +59,13 @@ def test_launch_browser_windows_handles_spaces(monkeypatch):
             return len(short)
         return 0
 
-    monkeypatch.setattr("cookie_monster.chrome_launcher.ctypes.windll.kernel32.GetShortPathNameW", fake_short_path)
+    class _FakeKernel32:
+        GetShortPathNameW = staticmethod(fake_short_path)
+
+    class _FakeWindll:
+        kernel32 = _FakeKernel32()
+
+    monkeypatch.setattr("cookie_monster.chrome_launcher.ctypes.windll", _FakeWindll(), raising=False)
 
     proc = chrome_launcher.launch_browser(
         browser="chrome",
@@ -84,7 +91,7 @@ def test_launch_browser_windows_handles_spaces(monkeypatch):
 
     # CREATE_NEW_CONSOLE should be in Popen kwargs.
     import subprocess
-    assert captured["kwargs"].get("creationflags") == subprocess.CREATE_NEW_CONSOLE
+    assert captured["kwargs"].get("creationflags") == getattr(subprocess, "CREATE_NEW_CONSOLE", 16)
 
 
 def test_wait_for_debug_endpoint_retries(monkeypatch):

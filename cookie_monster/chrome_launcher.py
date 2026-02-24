@@ -153,11 +153,12 @@ def launch_browser(
 
         args = [_fix_arg(a) for a in args]
 
+        creationflags = int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
         return subprocess.Popen(
             args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            creationflags=creationflags,
         )  # type: ignore[return-value]
 
     return subprocess.Popen(args)
